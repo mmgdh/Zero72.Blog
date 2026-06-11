@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Local CLI and package caches
+.dotnet_cli_home/
+.nuget/
+.tmp/

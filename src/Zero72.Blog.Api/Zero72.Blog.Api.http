@@ -1,0 +1,9 @@
+@Zero72.Blog.Api_HostAddress = https://localhost:7074
+
+GET {{Zero72.Blog.Api_HostAddress}}/api/health
+Accept: application/json
+
+###
+
+GET {{Zero72.Blog.Api_HostAddress}}/api/posts
+Accept: application/json

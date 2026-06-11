@@ -105,6 +105,33 @@ code {
     color: #c02d76;
 }
 
+.post-list {
+    display: grid;
+    gap: 1rem;
+    max-width: 56rem;
+}
+
+.post-card {
+    border: 1px solid #d6dbe1;
+    border-radius: 8px;
+    padding: 1rem;
+    background: #fff;
+}
+
+.post-card h2 {
+    font-size: 1.2rem;
+    margin: 0 0 0.5rem;
+}
+
+.post-card p {
+    margin: 0 0 0.75rem;
+    color: #4b5563;
+}
+
+.post-card small {
+    color: #6b7280;
+}
+
 .form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
     color: var(--bs-secondary-color);
     text-align: end;

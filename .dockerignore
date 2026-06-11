@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+.git/
+.vs/
+.dotnet_cli_home/
+.nuget/
+.tmp/
