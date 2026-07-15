@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zero72.Blog.Domain;
+using Zero72.Blog.Reading;
 
 namespace Zero72.Blog.Infrastructure;
 
@@ -37,6 +38,14 @@ public static class DatabaseInitializer
                         PublishedAt = now
                     });
 
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                }
+
+                if (!await dbContext.ReadingBooks.AnyAsync(cancellationToken) &&
+                    !await dbContext.ReadingRecords.AnyAsync(cancellationToken))
+                {
+                    dbContext.ReadingBooks.AddRange(ReadingSeedData.CreateBooks());
+                    dbContext.ReadingRecords.AddRange(ReadingSeedData.CreateRecords());
                     await dbContext.SaveChangesAsync(cancellationToken);
                 }
 

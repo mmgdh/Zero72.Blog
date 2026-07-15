@@ -1,0 +1,307 @@
+.header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .65rem;
+}
+
+.reading-metrics {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 1.25rem;
+}
+
+.reading-metrics article,
+.book-panel,
+.record-list,
+.record-editor {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.reading-metrics article {
+    padding: 1rem;
+}
+
+.reading-metrics span,
+.section-title span,
+.row-copy small,
+.reading-form label span,
+.editor-preview small {
+    color: var(--muted);
+}
+
+.reading-metrics span {
+    display: block;
+    font-size: .82rem;
+    font-weight: 800;
+    margin-bottom: .35rem;
+}
+
+.reading-metrics strong {
+    font-size: 1.65rem;
+}
+
+.reading-admin-layout {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 360px minmax(26rem, 1fr) 400px;
+}
+
+.book-panel,
+.record-list,
+.record-editor {
+    min-width: 0;
+    padding: 1rem;
+}
+
+.section-title {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    margin-bottom: .9rem;
+}
+
+.section-title h2 {
+    font-size: 1.05rem;
+    margin: 0;
+}
+
+.book-list {
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    gap: .35rem;
+    margin-bottom: 1rem;
+    max-height: 30rem;
+    overflow: auto;
+    padding-bottom: 1rem;
+}
+
+.book-row,
+.record-row {
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    display: grid;
+    gap: .75rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: .45rem;
+}
+
+.record-row + .record-row {
+    margin-top: .35rem;
+}
+
+.book-row.active,
+.book-row:hover,
+.record-row.active,
+.record-row:hover {
+    background: var(--panel-soft);
+    border-color: var(--border);
+}
+
+.book-row > button:first-child,
+.record-row > button:first-child {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    display: grid;
+    gap: .75rem;
+    grid-template-columns: 52px minmax(0, 1fr);
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.row-copy {
+    min-width: 0;
+}
+
+.row-copy strong,
+.row-copy small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.row-copy small {
+    font-size: .82rem;
+    line-height: 1.55;
+}
+
+.delete-button {
+    background: var(--danger-bg);
+    border: 0;
+    border-radius: 8px;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: .82rem;
+    font-weight: 800;
+    padding: .45rem .65rem;
+}
+
+.delete-button:disabled {
+    cursor: not-allowed;
+    opacity: .42;
+}
+
+.reading-form {
+    display: grid;
+    gap: .9rem;
+}
+
+.book-form {
+    padding-top: .25rem;
+}
+
+.form-grid {
+    display: grid;
+    gap: .75rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reading-form label {
+    display: grid;
+    gap: .4rem;
+}
+
+.reading-form label span {
+    font-size: .84rem;
+    font-weight: 800;
+}
+
+.reading-form input,
+.reading-form select,
+.reading-form textarea {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: .65rem .75rem;
+    width: 100%;
+}
+
+.reading-form textarea {
+    min-height: 9rem;
+    resize: vertical;
+}
+
+.reading-form input:focus,
+.reading-form select:focus,
+.reading-form textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    outline: none;
+}
+
+.cover-upload-field {
+    align-items: center;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    display: flex;
+    gap: .8rem;
+    justify-content: space-between;
+    padding: .75rem;
+}
+
+.cover-upload-field > div:first-child {
+    display: grid;
+    gap: .25rem;
+}
+
+.cover-upload-field span {
+    color: var(--text);
+    font-size: .84rem;
+    font-weight: 800;
+}
+
+.cover-upload-field small {
+    color: var(--muted);
+    font-size: .8rem;
+    line-height: 1.45;
+}
+
+.cover-upload-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    justify-content: flex-end;
+}
+
+.upload-button {
+    align-items: center;
+    background: var(--accent-soft);
+    border: 1px solid rgba(37, 99, 235, .18);
+    border-radius: 8px;
+    color: var(--accent);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: .84rem;
+    font-weight: 850;
+    min-height: 36px;
+    padding: .5rem .7rem;
+    white-space: nowrap;
+}
+
+.upload-button input {
+    display: none;
+}
+
+.small-button {
+    min-height: 36px;
+    padding: .5rem .7rem;
+}
+
+.editor-preview {
+    align-items: center;
+    background: var(--panel-soft);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: grid;
+    gap: .8rem;
+    grid-template-columns: 58px minmax(0, 1fr);
+    padding: .75rem;
+}
+
+.editor-preview strong,
+.editor-preview small {
+    display: block;
+}
+
+@media (max-width: 1320px) {
+    .reading-admin-layout {
+        grid-template-columns: 360px minmax(0, 1fr);
+    }
+
+    .record-editor {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 900px) {
+    .reading-metrics,
+    .reading-admin-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .cover-upload-field {
+        align-items: stretch;
+        display: grid;
+    }
+
+    .cover-upload-actions {
+        justify-content: flex-start;
+    }
+}

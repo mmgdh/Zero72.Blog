@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+<div class="admin-shell">
+    <aside class="admin-sidebar">
+        <NavLink class="brand" href="" Match="NavLinkMatch.All">
+            <span>Zero72</span>
+            <small>博客后台</small>
+        </NavLink>
+
+        <nav>
+            <NavLink href="" Match="NavLinkMatch.All">文章</NavLink>
+            <NavLink href="posts/new">写作</NavLink>
+            <NavLink href="reading">阅读管理</NavLink>
+        </nav>
+    </aside>
+
+    <main class="admin-main">
+        @Body
+    </main>
+</div>

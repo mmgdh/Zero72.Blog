@@ -1,0 +1,111 @@
+@page "/books/{BookId:guid}"
+@inject HttpClient Http
+
+<PageTitle>@PageTitleText</PageTitle>
+
+<main class="main-content page book-reading-page">
+    <header class="book-detail-hero">
+        <NavLink class="book-detail-cover-link" href="/books">
+            <BookCover Title="@book?.Title" CoverTone="@book?.CoverTone" CoverImageUrl="@book?.CoverImageUrl" Variant="BookCoverVariant.Detail" Lazy="false" />
+        </NavLink>
+        <div>
+            <p class="eyebrow">图书编年史</p>
+            <h1>@(book?.Title ?? "图书阅读记录")</h1>
+            <p>@(book?.Author ?? "正在加载图书信息...")</p>
+            @if (book is not null)
+            {
+                <div class="book-stats">
+                    <span>@book.RecordCount 条记录</span>
+                    <span>@book.TotalHours.ToString("0.0") 小时</span>
+                    <span>@GetDateRange(book)</span>
+                </div>
+            }
+        </div>
+        <NavLink class="back-link" href="/books">返回图书</NavLink>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <section class="status-panel status-error">@errorMessage</section>
+    }
+    else if (book is null || timeline is null)
+    {
+        <section class="status-panel">正在加载图书阅读记录...</section>
+    }
+    else if (timeline.Count == 0)
+    {
+        <section class="status-panel">这本书还没有阅读记录。</section>
+    }
+    else
+    {
+        <section class="book-record-list" aria-label="单本书阅读记录">
+            @foreach (var day in timeline)
+            {
+                <article class="book-record-day">
+                    <div class="record-date">
+                        <time datetime="@day.Date.ToString("yyyy-MM-dd")">@day.Date.ToString("yyyy-MM-dd")</time>
+                        <span>@day.Weekday</span>
+                    </div>
+                    <div class="record-items">
+                        @foreach (var record in day.Records)
+                        {
+                            <article class="record-card">
+                                <div>
+                                    <h2>@record.Chapter</h2>
+                                    <p>@record.StartedAt.ToString("HH:mm") - @record.FinishedAt.ToString("HH:mm") · @record.DurationHours.ToString("0.0") 小时</p>
+                                </div>
+                                <ul>
+                                    @foreach (var reflection in record.Reflections)
+                                    {
+                                        <li>@reflection</li>
+                                    }
+                                </ul>
+                            </article>
+                        }
+                    </div>
+                </article>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter]
+    public Guid BookId { get; set; }
+
+    private ReadingBook? book;
+    private List<ReadingTimelineDay>? timeline;
+    private string? errorMessage;
+
+    private string PageTitleText => book is null
+        ? "图书阅读记录 - Zero72 博客"
+        : $"{book.Title} - 阅读记录";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            book = await Http.GetFromJsonAsync<ReadingBook>($"api/reading-books/{BookId}");
+            timeline = await Http.GetFromJsonAsync<List<ReadingTimelineDay>>($"api/reading-records?bookId={BookId}") ?? [];
+        }
+        catch (Exception)
+        {
+            book = null;
+            timeline = [];
+            errorMessage = "无法读取这本书的阅读记录，请确认后端接口已启动。";
+        }
+    }
+
+    private static string GetDateRange(ReadingBook book)
+    {
+        if (book.FirstReadDate is null || book.LastReadDate is null)
+        {
+            return "还没有阅读记录";
+        }
+
+        return book.FirstReadDate == book.LastReadDate
+            ? book.FirstReadDate.Value.ToString("yyyy-MM-dd")
+            : $"{book.FirstReadDate.Value:yyyy-MM-dd} ~ {book.LastReadDate.Value:yyyy-MM-dd}";
+    }
+
+}

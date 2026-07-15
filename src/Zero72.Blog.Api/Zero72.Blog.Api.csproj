@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zero72.Blog.Infrastructure\Zero72.Blog.Infrastructure.csproj" />
+    <ProjectReference Include="..\Zero72.Blog.Reading\Zero72.Blog.Reading.csproj" />
     <ProjectReference Include="..\Zero72.Blog.Shared\Zero72.Blog.Shared.csproj" />
   </ItemGroup>
 

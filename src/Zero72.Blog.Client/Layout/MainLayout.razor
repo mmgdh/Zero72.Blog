@@ -1,12 +1,94 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inherits LayoutComponentBase
 
-    <main>
-        <article class="content px-4">
+<div id="layout" class="layout">
+    <NavMenu />
+
+    <aside class="sidebar">
+        <section class="sidebar-section">
+            <div class="sidebar-title-link">
+                <NavLink href="/blog" class="site-title-link" Match="NavLinkMatch.All">
+                    <span class="navbar-logo">Z</span>
+                    <span class="site-name">Zero72 博客</span>
+                </NavLink>
+                <div class="sidebar-actions">
+                    <button class="navbar-button" type="button" title="切换强调色" onclick="zero72Theme.toggleColor()">
+                        <span class="color-dot"></span>
+                    </button>
+                    <button class="navbar-button" type="button" title="切换主题" onclick="zero72Theme.toggle()">
+                        <span class="theme-glyph"></span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section class="sidebar-section">
+            <h2>关于我</h2>
+            <div class="sidebar-content">
+                <p>
+                    我是 <NavLink href="/blog">Zero72</NavLink>，全栈开发者和 .NET 探索者。
+                    这里是我的数字花园。
+                </p>
+            </div>
+        </section>
+
+        <section class="sidebar-section">
+            <nav class="sidebar-nav-links">
+                <NavLink href="/blog" Match="NavLinkMatch.All">
+                    <span class="nav-image">B</span>
+                    博客
+                </NavLink>
+                <NavLink href="/notes" Match="NavLinkMatch.All">
+                    <span class="nav-image">N</span>
+                    随笔
+                </NavLink>
+                <NavLink href="/projects" Match="NavLinkMatch.All">
+                    <span class="nav-image">P</span>
+                    项目
+                </NavLink>
+                <NavLink href="/reading" Match="NavLinkMatch.All">
+                    <span class="nav-image">R</span>
+                    阅读记录
+                </NavLink>
+                <NavLink href="/books" Match="NavLinkMatch.All">
+                    <span class="nav-image">K</span>
+                    已读图书
+                </NavLink>
+                <a href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer">
+                    <span class="nav-image">A</span>
+                    关于我
+                </a>
+            </nav>
+        </section>
+
+        <section class="sidebar-section">
+            <h2>保持联系</h2>
+            <p class="sidebar-links">
+                <a href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="/blog">RSS 订阅</a>
+            </p>
+        </section>
+    </aside>
+
+    <div class="main-wrapper">
+        <div class="main-container">
             @Body
-        </article>
-    </main>
+        </div>
+
+        <footer class="footer">
+            <div class="footer-section">
+                <div class="footer-made-by">
+                    <span class="navbar-logo small-logo">Z</span>
+                    <span>由 Zero72 用心构建</span>
+                </div>
+                <nav class="footer-menu">
+                    <a class="footer-link" href="/blog">博客</a>
+                    <a class="footer-link" href="/notes">随笔</a>
+                    <a class="footer-link" href="/reading">阅读记录</a>
+                    <a class="footer-link" href="/books">已读图书</a>
+                    <a class="footer-link" href="/projects">项目</a>
+                    <a class="footer-link" href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer">GitHub</a>
+                </nav>
+            </div>
+        </footer>
+    </div>
 </div>

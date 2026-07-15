@@ -1,0 +1,202 @@
+@page "/reading"
+@inject HttpClient Http
+
+<PageTitle>阅读记录 - Zero72 博客</PageTitle>
+
+<main class="main-content page reading-page">
+    <header class="reading-hero">
+        <div>
+            <p class="eyebrow">阅读编年史</p>
+            <h1>阅读记录</h1>
+            <p>记录每一天的阅读足迹，见证思想的成长。</p>
+        </div>
+        <div class="reading-actions">
+            <label class="filter-field">
+                <span>视图</span>
+                <select @bind="selectedView">
+                    <option value="timeline">时间线视图</option>
+                </select>
+            </label>
+            <label class="filter-field">
+                <span>开始</span>
+                <input type="date" value="@startDateText" @oninput="OnStartDateChanged" />
+            </label>
+            <label class="filter-field">
+                <span>结束</span>
+                <input type="date" value="@endDateText" @oninput="OnEndDateChanged" />
+            </label>
+            <button type="button" class="filter-button" @onclick="ResetDateRange">重置范围</button>
+            <NavLink class="export-button" href="/books">已读图书</NavLink>
+        </div>
+    </header>
+
+    @if (timeline is null)
+    {
+        <section class="status-panel">正在加载阅读记录...</section>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <section class="status-panel status-error">@errorMessage</section>
+    }
+    else if (filteredTimeline.Count == 0)
+    {
+        <section class="status-panel">@EmptyMessage</section>
+    }
+    else
+    {
+        <p class="range-summary">@RangeSummary</p>
+        <section class="timeline" aria-label="阅读时间线">
+            @foreach (var day in filteredTimeline)
+            {
+                <article class="timeline-day">
+                    <aside class="date-rail">
+                        <time datetime="@day.Date.ToString("yyyy-MM-dd")">@day.Date.ToString("yyyy-MM-dd")</time>
+                        <span>@day.Weekday</span>
+                    </aside>
+                    <span class="timeline-dot"></span>
+                    <section class="day-card">
+                        <div class="book-strip">
+                            @foreach (var record in day.Records)
+                            {
+                                <article class="book-entry">
+                                    <NavLink class="book-cover-link" href="@GetBookUrl(record.BookId)">
+                                        <BookCover Title="@record.BookTitle" CoverTone="@record.CoverTone" CoverImageUrl="@record.CoverImageUrl" Variant="BookCoverVariant.Timeline" />
+                                    </NavLink>
+                                    <div class="book-copy">
+                                        <h2>
+                                            <NavLink class="book-link" href="@GetBookUrl(record.BookId)">@record.BookTitle</NavLink>
+                                        </h2>
+                                        <p class="author">@record.Author</p>
+                                        <p class="time-line">
+                                            <span>@record.StartedAt.ToString("HH:mm") - @record.FinishedAt.ToString("HH:mm")</span>
+                                            <span>@record.DurationHours.ToString("0.0") 小时</span>
+                                        </p>
+                                        <p class="chapter">@record.Chapter</p>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+
+                        <aside class="reflection-panel">
+                            <h3>想法或感悟</h3>
+                            <ul>
+                                @foreach (var insight in day.Insights)
+                                {
+                                    <li>@insight</li>
+                                }
+                            </ul>
+                        </aside>
+                    </section>
+                </article>
+            }
+        </section>
+
+        <div class="timeline-end">已经到底了</div>
+    }
+</main>
+
+@code {
+    private List<ReadingTimelineDay>? timeline;
+    private List<ReadingTimelineDay> filteredTimeline = [];
+    private string? errorMessage;
+    private string selectedView = "timeline";
+    private string startDateText = string.Empty;
+    private string endDateText = string.Empty;
+    private bool hasDateFilter;
+
+    private string EmptyMessage => timeline?.Count > 0
+        ? "这个时间范围内没有阅读记录。"
+        : "还没有阅读记录。";
+
+    private string RangeSummary => hasDateFilter
+        ? $"{startDateText} ~ {endDateText}"
+        : "全部阅读记录";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            timeline = await Http.GetFromJsonAsync<List<ReadingTimelineDay>>("api/reading-records") ?? [];
+            InitializeDateRange();
+            ApplyDateRange();
+        }
+        catch (Exception)
+        {
+            timeline = [];
+            filteredTimeline = [];
+            errorMessage = "无法读取阅读记录，请确认后端接口已启动。";
+        }
+    }
+
+    private void InitializeDateRange()
+    {
+        if (timeline is null || timeline.Count == 0)
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            startDateText = today.ToString("yyyy-MM-dd");
+            endDateText = today.ToString("yyyy-MM-dd");
+            hasDateFilter = false;
+            return;
+        }
+
+        startDateText = timeline.Min(day => day.Date).ToString("yyyy-MM-dd");
+        endDateText = timeline.Max(day => day.Date).ToString("yyyy-MM-dd");
+        hasDateFilter = false;
+    }
+
+    private void OnStartDateChanged(ChangeEventArgs args)
+    {
+        startDateText = args.Value?.ToString() ?? string.Empty;
+        ApplyDateRange();
+    }
+
+    private void OnEndDateChanged(ChangeEventArgs args)
+    {
+        endDateText = args.Value?.ToString() ?? string.Empty;
+        ApplyDateRange();
+    }
+
+    private void ResetDateRange()
+    {
+        InitializeDateRange();
+        ApplyDateRange();
+    }
+
+    private void ApplyDateRange()
+    {
+        if (timeline is null)
+        {
+            filteredTimeline = [];
+            return;
+        }
+
+        if (!DateOnly.TryParseExact(startDateText, "yyyy-MM-dd", out var startDate) ||
+            !DateOnly.TryParseExact(endDateText, "yyyy-MM-dd", out var endDate))
+        {
+            filteredTimeline = timeline;
+            hasDateFilter = false;
+            return;
+        }
+
+        if (startDate > endDate)
+        {
+            (startDate, endDate) = (endDate, startDate);
+            startDateText = startDate.ToString("yyyy-MM-dd");
+            endDateText = endDate.ToString("yyyy-MM-dd");
+        }
+
+        var minDate = timeline.Count == 0 ? startDate : timeline.Min(day => day.Date);
+        var maxDate = timeline.Count == 0 ? endDate : timeline.Max(day => day.Date);
+        hasDateFilter = startDate != minDate || endDate != maxDate;
+
+        filteredTimeline = timeline
+            .Where(day => day.Date >= startDate && day.Date <= endDate)
+            .ToList();
+    }
+
+    private static string GetBookUrl(Guid bookId)
+    {
+        return $"/books/{bookId}";
+    }
+
+}

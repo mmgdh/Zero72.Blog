@@ -1,0 +1,63 @@
+@if (HasImage)
+{
+    <img class="@CoverClass" src="@CoverImageUrl" alt="@AltText" loading="@LoadingMode" />
+}
+else
+{
+    <span class="@CoverClass" role="img" aria-label="@AltText">
+        <span>@CoverText</span>
+    </span>
+}
+
+@code {
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public string? CoverTone { get; set; }
+
+    [Parameter]
+    public string? CoverImageUrl { get; set; }
+
+    [Parameter]
+    public BookCoverVariant Variant { get; set; } = BookCoverVariant.Card;
+
+    [Parameter]
+    public bool Lazy { get; set; } = true;
+
+    [Parameter]
+    public string? Class { get; set; }
+
+    private bool HasImage => !string.IsNullOrWhiteSpace(CoverImageUrl);
+
+    private string LoadingMode => Lazy ? "lazy" : "eager";
+
+    private string AltText => string.IsNullOrWhiteSpace(Title)
+        ? "图书封面"
+        : $"{Title} 封面";
+
+    private string CoverText => string.IsNullOrWhiteSpace(Title)
+        ? "图书"
+        : Title.Length <= 6 ? Title : Title[..6];
+
+    private string CoverClass
+    {
+        get
+        {
+            var tone = string.IsNullOrWhiteSpace(CoverTone) ? "midnight" : CoverTone;
+            var mode = HasImage ? "is-image" : "is-generated";
+            var variant = Variant.ToString().ToLowerInvariant();
+
+            return string.Join(
+                ' ',
+                new[]
+                {
+                    "book-cover",
+                    $"book-cover-{variant}",
+                    $"tone-{tone}",
+                    mode,
+                    Class
+                }.Where(value => !string.IsNullOrWhiteSpace(value)));
+        }
+    }
+}

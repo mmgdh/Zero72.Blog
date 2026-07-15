@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Zero72.Blog.Reading;
 
 namespace Zero72.Blog.Infrastructure;
 
@@ -15,6 +16,7 @@ public static class DependencyInjection
 
         services.AddDbContext<BlogDbContext>(options =>
             options.UseNpgsql(connectionString));
+        services.AddScoped<IReadingLibraryStore, EfReadingLibraryStore>();
 
         return services;
     }

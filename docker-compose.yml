@@ -27,6 +27,8 @@ services:
         condition: service_healthy
     ports:
       - "5000:8080"
+    volumes:
+      - uploads-data:/app/wwwroot/uploads
 
   client:
     build:
@@ -39,5 +41,17 @@ services:
     ports:
       - "8080:8080"
 
+  admin:
+    build:
+      context: .
+      dockerfile: src/Zero72.Blog.Admin/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+    depends_on:
+      - api
+    ports:
+      - "8081:8080"
+
 volumes:
   postgres-data:
+  uploads-data:

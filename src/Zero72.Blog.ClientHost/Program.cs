@@ -20,6 +20,19 @@ contentTypeProvider.Mappings[".wasm"] = "application/wasm";
 
 var frameworkRoot = Path.GetFullPath(Path.Combine(app.Environment.WebRootPath, "_framework"));
 
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        context.Response.Headers.CacheControl = "no-store, no-cache, max-age=0, must-revalidate";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.Expires = "0";
+        return Task.CompletedTask;
+    });
+
+    await next();
+});
+
 app.MapGet("/_framework/{**assetPath}", (string assetPath, HttpContext httpContext) =>
 {
     var requestedPath = Path.GetFullPath(Path.Combine(frameworkRoot, assetPath));
@@ -34,7 +47,6 @@ app.MapGet("/_framework/{**assetPath}", (string assetPath, HttpContext httpConte
         contentType = "application/octet-stream";
     }
 
-    httpContext.Response.Headers.CacheControl = "no-store";
     return Results.File(requestedPath, contentType, enableRangeProcessing: true);
 });
 
@@ -46,7 +58,9 @@ app.UseStaticFiles(new StaticFileOptions
     DefaultContentType = "application/octet-stream",
     OnPrepareResponse = context =>
     {
-        context.Context.Response.Headers.CacheControl = "no-store";
+        context.Context.Response.Headers.CacheControl = "no-store, no-cache, max-age=0, must-revalidate";
+        context.Context.Response.Headers.Pragma = "no-cache";
+        context.Context.Response.Headers.Expires = "0";
     }
 });
 

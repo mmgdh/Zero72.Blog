@@ -1,8 +1,11 @@
 <Solution>
   <Project Path="src/Zero72.Blog.Api/Zero72.Blog.Api.csproj" />
+  <Project Path="src/Zero72.Blog.Admin/Zero72.Blog.Admin.csproj" />
   <Project Path="src/Zero72.Blog.Client/Zero72.Blog.Client.csproj" />
   <Project Path="src/Zero72.Blog.ClientHost/Zero72.Blog.ClientHost.csproj" />
+  <Project Path="src/Zero72.Blog.Components/Zero72.Blog.Components.csproj" />
   <Project Path="src/Zero72.Blog.Domain/Zero72.Blog.Domain.csproj" />
   <Project Path="src/Zero72.Blog.Infrastructure/Zero72.Blog.Infrastructure.csproj" />
+  <Project Path="src/Zero72.Blog.Reading/Zero72.Blog.Reading.csproj" />
   <Project Path="src/Zero72.Blog.Shared/Zero72.Blog.Shared.csproj" />
 </Solution>

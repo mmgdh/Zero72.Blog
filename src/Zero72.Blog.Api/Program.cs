@@ -27,13 +27,23 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.Environment.WebRootPath ??= Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+Directory.CreateDirectory(Path.Combine(app.Environment.WebRootPath, "uploads"));
+
 app.UseCors("ClientApp");
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 
 await app.Services.InitializeDatabaseAsync(app.Logger);
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 app.MapBlogPostEndpoints();
+app.MapAdminBlogPostEndpoints();
+app.MapAdminAssetEndpoints();
+app.MapReadingBookEndpoints();
+app.MapReadingRecordEndpoints();
+app.MapAdminReadingBookEndpoints();
+app.MapAdminReadingRecordEndpoints();
 
 app.Run();
 

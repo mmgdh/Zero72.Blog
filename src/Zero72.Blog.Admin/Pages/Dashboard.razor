@@ -1,0 +1,80 @@
+@page "/"
+@inject HttpClient Http
+
+<PageTitle>文章管理 - Zero72 后台</PageTitle>
+
+<header class="page-header">
+    <div>
+        <p>Markdown 工作台</p>
+        <h1>文章管理</h1>
+    </div>
+    <NavLink class="button-primary" href="posts/new">新建文章</NavLink>
+</header>
+
+@if (posts is null)
+{
+    <section class="empty-state">正在加载文章...</section>
+}
+else if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <section class="empty-state error">@errorMessage</section>
+}
+else if (posts.Count == 0)
+{
+    <section class="empty-state">
+        <h2>还没有文章</h2>
+        <p>从第一篇 Markdown 草稿开始吧。</p>
+        <NavLink class="button-primary" href="posts/new">开始写作</NavLink>
+    </section>
+}
+else
+{
+    <section class="post-table">
+        <div class="table-row table-head">
+            <span>标题</span>
+            <span>状态</span>
+            <span>链接标识</span>
+            <span>更新时间</span>
+        </div>
+
+        @foreach (var post in posts)
+        {
+            <NavLink class="table-row" href="@($"posts/{post.Id}")">
+                <span>
+                    <strong>@post.Title</strong>
+                    <small>@post.Summary</small>
+                </span>
+                <span>
+                    <mark class="@(post.IsPublished ? "published" : "draft")">
+                        @(post.IsPublished ? "已发布" : "草稿")
+                    </mark>
+                </span>
+                <span>@post.Slug</span>
+                <span>@FormatDate(post.PublishedAt ?? post.CreatedAt)</span>
+            </NavLink>
+        }
+    </section>
+}
+
+@code {
+    private List<AdminBlogPostItem>? posts;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            posts = await Http.GetFromJsonAsync<List<AdminBlogPostItem>>("api/admin/posts") ?? [];
+        }
+        catch (Exception)
+        {
+            posts = [];
+            errorMessage = "无法读取文章列表，请确认后端接口已启动。";
+        }
+    }
+
+    private static string FormatDate(DateTimeOffset value)
+    {
+        return value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    }
+}

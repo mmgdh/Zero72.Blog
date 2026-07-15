@@ -1,53 +1,9 @@
 @page "/"
-@inject HttpClient Http
-
-<PageTitle>Zero72 Blog</PageTitle>
-
-<h1>Zero72 Blog</h1>
-
-@if (posts is null)
-{
-    <p>Loading posts...</p>
-}
-else if (!string.IsNullOrWhiteSpace(errorMessage))
-{
-    <p class="text-danger">@errorMessage</p>
-}
-else if (posts.Count == 0)
-{
-    <p>No published posts yet.</p>
-}
-else
-{
-    <section class="post-list">
-        @foreach (var post in posts)
-        {
-            <article class="post-card">
-                <h2>@post.Title</h2>
-                <p>@post.Summary</p>
-                @if (post.PublishedAt is not null)
-                {
-                    <small>@post.PublishedAt.Value.ToLocalTime().ToString("yyyy-MM-dd")</small>
-                }
-            </article>
-        }
-    </section>
-}
+@inject NavigationManager Navigation
 
 @code {
-    private List<BlogPostSummary>? posts;
-    private string? errorMessage;
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        try
-        {
-            posts = await Http.GetFromJsonAsync<List<BlogPostSummary>>("api/posts") ?? [];
-        }
-        catch (Exception)
-        {
-            posts = [];
-            errorMessage = "Unable to load posts from the API.";
-        }
+        Navigation.NavigateTo("/blog", replace: true);
     }
 }

@@ -1,0 +1,595 @@
+@page "/reading"
+@inject HttpClient Http
+
+<PageTitle>阅读管理 - Zero72 后台</PageTitle>
+
+<header class="page-header">
+    <div>
+        <p>阅读工作台</p>
+        <h1>阅读管理</h1>
+    </div>
+    <div class="header-actions">
+        <button class="button-secondary" type="button" @onclick="ResetBookForm">新建图书</button>
+        <button class="button-secondary" type="button" @onclick="ResetRecordForm">新建记录</button>
+    </div>
+</header>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <section class="message @(isError ? "error" : "success")">@message</section>
+}
+
+@if (books is null || records is null)
+{
+    <section class="empty-state">正在加载阅读数据...</section>
+}
+else
+{
+    <section class="reading-metrics">
+        <article>
+            <span>图书数量</span>
+            <strong>@books.Count</strong>
+        </article>
+        <article>
+            <span>记录数量</span>
+            <strong>@records.Count</strong>
+        </article>
+        <article>
+            <span>阅读天数</span>
+            <strong>@records.Select(record => record.ReadDate).Distinct().Count()</strong>
+        </article>
+        <article>
+            <span>累计时长</span>
+            <strong>@records.Sum(record => record.DurationHours).ToString("0.0") 小时</strong>
+        </article>
+    </section>
+
+    <section class="reading-admin-layout">
+        <aside class="book-panel">
+            <div class="section-title">
+                <h2>图书库</h2>
+                <span>@books.Count 本</span>
+            </div>
+
+            <div class="book-list">
+                @foreach (var book in books)
+                {
+                    <article class="book-row @(editingBookId == book.Id ? "active" : null)">
+                        <button type="button" @onclick="() => EditBook(book)">
+                            <BookCover Title="@book.Title" CoverTone="@book.CoverTone" CoverImageUrl="@book.CoverImageUrl" Variant="BookCoverVariant.Admin" />
+                            <span class="row-copy">
+                                <strong>@book.Title</strong>
+                                <small>@book.Author</small>
+                                <small>@book.RecordCount 条记录 · @book.TotalHours.ToString("0.0") 小时</small>
+                            </span>
+                        </button>
+                        <button class="delete-button" type="button" disabled="@(book.RecordCount > 0)" @onclick="() => DeleteBookAsync(book.Id)">
+                            删除
+                        </button>
+                    </article>
+                }
+            </div>
+
+            <form class="reading-form book-form" @onsubmit="SaveBookAsync" @onsubmit:preventDefault="true">
+                <div class="section-title">
+                    <h2>@(editingBookId is null ? "新增图书" : "编辑图书")</h2>
+                    <span>基础信息</span>
+                </div>
+
+                <label>
+                    <span>书名</span>
+                    <input @bind="bookTitle" placeholder="例如：代码整洁之道" />
+                </label>
+
+                <label>
+                    <span>作者</span>
+                    <input @bind="bookAuthor" placeholder="作者或译者" />
+                </label>
+
+                <label>
+                    <span>封面色调</span>
+                    <select @bind="bookCoverTone">
+                        @foreach (var tone in CoverTones)
+                        {
+                            <option value="@tone.Value">@tone.Label</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="cover-upload-field">
+                    <div>
+                        <span>封面图片</span>
+                        <small>支持 jpg、png、webp、gif，最大 5 MB。</small>
+                    </div>
+                    <div class="cover-upload-actions">
+                        <label class="upload-button">
+                            <InputFile OnChange="UploadBookCoverAsync" accept="image/png,image/jpeg,image/webp,image/gif" />
+                            <span>@(isUploadingBookCover ? "上传中..." : "上传封面")</span>
+                        </label>
+                        @if (CanClearBookCover)
+                        {
+                            <button class="button-secondary small-button" type="button" @onclick="ClearBookCover">清除封面</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="editor-preview">
+                    <BookCover Title="@bookTitle" CoverTone="@bookCoverTone" CoverImageUrl="@bookCoverImageUrl" Variant="BookCoverVariant.Admin" />
+                    <div>
+                        <strong>@(string.IsNullOrWhiteSpace(bookTitle) ? "图书预览" : bookTitle)</strong>
+                        <small>@(string.IsNullOrWhiteSpace(bookAuthor) ? "作者" : bookAuthor)</small>
+                    </div>
+                </div>
+
+                <button class="button-primary" type="submit" disabled="@isSavingBook">
+                    @(isSavingBook ? "保存中..." : "保存图书")
+                </button>
+            </form>
+        </aside>
+
+        <div class="record-list">
+            <div class="section-title">
+                <h2>阅读记录</h2>
+                <span>@records.Count 条</span>
+            </div>
+
+            @foreach (var record in records)
+            {
+                <article class="record-row @(editingRecordId == record.Id ? "active" : null)">
+                    <button type="button" @onclick="() => EditRecord(record)">
+                        <BookCover Title="@record.BookTitle" CoverTone="@record.CoverTone" CoverImageUrl="@record.CoverImageUrl" Variant="BookCoverVariant.Admin" />
+                        <span class="row-copy">
+                            <strong>@record.BookTitle</strong>
+                            <small>@record.ReadDate.ToString("yyyy-MM-dd") · @record.StartedAt.ToString("HH:mm") - @record.FinishedAt.ToString("HH:mm")</small>
+                            <small>@record.Chapter</small>
+                        </span>
+                    </button>
+                    <button class="delete-button" type="button" @onclick="() => DeleteRecordAsync(record.Id)">删除</button>
+                </article>
+            }
+        </div>
+
+        <aside class="record-editor">
+            <div class="section-title">
+                <h2>@(editingRecordId is null ? "新增记录" : "编辑记录")</h2>
+                <span>@GetDurationPreview()</span>
+            </div>
+
+            <form class="reading-form" @onsubmit="SaveRecordAsync" @onsubmit:preventDefault="true">
+                <label>
+                    <span>图书</span>
+                    <select @bind="recordBookIdText">
+                        <option value="">选择一本图书</option>
+                        @foreach (var book in books)
+                        {
+                            <option value="@book.Id">@book.Title · @book.Author</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="form-grid">
+                    <label>
+                        <span>日期</span>
+                        <input type="date" value="@readDateText" @oninput="OnReadDateChanged" />
+                    </label>
+                    <label>
+                        <span>章节</span>
+                        <input @bind="chapter" placeholder="例如：第8章 - 第9章：函数" />
+                    </label>
+                </div>
+
+                <div class="form-grid">
+                    <label>
+                        <span>开始时间</span>
+                        <input type="time" value="@startedAtText" @oninput="OnStartedAtChanged" />
+                    </label>
+                    <label>
+                        <span>结束时间</span>
+                        <input type="time" value="@finishedAtText" @oninput="OnFinishedAtChanged" />
+                    </label>
+                </div>
+
+                <label>
+                    <span>想法或感悟</span>
+                    <textarea @bind="reflectionsText" placeholder="每行一条感悟，页面会自动显示为列表"></textarea>
+                </label>
+
+                <div class="editor-preview">
+                    <BookCover Title="@SelectedBook?.Title" CoverTone="@SelectedBook?.CoverTone" CoverImageUrl="@SelectedBook?.CoverImageUrl" Variant="BookCoverVariant.Admin" />
+                    <div>
+                        <strong>@(SelectedBook?.Title ?? "选择图书")</strong>
+                        <small>@chapter</small>
+                    </div>
+                </div>
+
+                <button class="button-primary" type="submit" disabled="@isSavingRecord">
+                    @(isSavingRecord ? "保存中..." : "保存记录")
+                </button>
+            </form>
+        </aside>
+    </section>
+}
+
+@code {
+    private static readonly IReadOnlyList<(string Value, string Label)> CoverTones =
+    [
+        ("midnight", "午夜蓝"),
+        ("paper", "纸页红"),
+        ("linen", "米色"),
+        ("cosmos", "星轨"),
+        ("sparrow", "技术书"),
+        ("ocean", "海蓝")
+    ];
+
+    private List<ReadingBook>? books;
+    private List<ReadingRecord>? records;
+    private Guid? editingBookId;
+    private Guid? editingRecordId;
+    private bool isSavingBook;
+    private bool isSavingRecord;
+    private bool isUploadingBookCover;
+    private bool isError;
+    private string? message;
+    private string bookTitle = string.Empty;
+    private string bookAuthor = string.Empty;
+    private string bookCoverTone = "midnight";
+    private string? bookCoverImageUrl;
+    private string recordBookIdText = string.Empty;
+    private string readDateText = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+    private string chapter = string.Empty;
+    private string startedAtText = "20:00";
+    private string finishedAtText = "21:30";
+    private string reflectionsText = string.Empty;
+
+    private bool CanClearBookCover => !string.IsNullOrWhiteSpace(bookCoverImageUrl);
+
+    private ReadingBook? SelectedBook => GetSelectedBook();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            books = await Http.GetFromJsonAsync<List<ReadingBook>>("api/admin/reading-books") ?? [];
+            records = await Http.GetFromJsonAsync<List<ReadingRecord>>("api/admin/reading-records") ?? [];
+        }
+        catch (Exception)
+        {
+            books = [];
+            records = [];
+            ShowError("无法读取阅读数据，请确认后端接口已启动。");
+        }
+    }
+
+    private void EditBook(ReadingBook book)
+    {
+        editingBookId = book.Id;
+        bookTitle = book.Title;
+        bookAuthor = book.Author;
+        bookCoverTone = book.CoverTone;
+        bookCoverImageUrl = book.CoverImageUrl;
+        message = null;
+    }
+
+    private async Task SaveBookAsync()
+    {
+        if (!TryBuildBookRequest(out var request))
+        {
+            return;
+        }
+
+        isSavingBook = true;
+        message = null;
+
+        try
+        {
+            var response = editingBookId is null
+                ? await Http.PostAsJsonAsync("api/admin/reading-books", request)
+                : await Http.PutAsJsonAsync($"api/admin/reading-books/{editingBookId}", request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError(await response.Content.ReadAsStringAsync());
+                return;
+            }
+
+            await LoadAsync();
+            ResetBookForm();
+            ShowSuccess("图书已保存。");
+        }
+        catch (Exception)
+        {
+            ShowError("保存图书失败，请确认后端接口已启动。");
+        }
+        finally
+        {
+            isSavingBook = false;
+        }
+    }
+
+    private async Task DeleteBookAsync(Guid id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/admin/reading-books/{id}");
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError("只能删除没有阅读记录的图书。");
+                return;
+            }
+
+            await LoadAsync();
+            if (editingBookId == id)
+            {
+                ResetBookForm();
+            }
+
+            ShowSuccess("图书已删除。");
+        }
+        catch (Exception)
+        {
+            ShowError("删除图书失败，请确认后端接口已启动。");
+        }
+    }
+
+    private async Task UploadBookCoverAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        const long maxImageSize = 5 * 1024 * 1024;
+
+        if (file.Size > maxImageSize)
+        {
+            ShowError("封面图片不能超过 5 MB。");
+            return;
+        }
+
+        isUploadingBookCover = true;
+        message = null;
+
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            await using var stream = file.OpenReadStream(maxImageSize);
+            using var content = new StreamContent(stream);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+            form.Add(content, "file", file.Name);
+
+            var response = await Http.PostAsync("api/admin/assets/images", form);
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError(await response.Content.ReadAsStringAsync());
+                return;
+            }
+
+            var uploadedImage = await response.Content.ReadFromJsonAsync<UploadImageResponse>();
+            if (uploadedImage is null)
+            {
+                ShowError("封面上传失败。");
+                return;
+            }
+
+            bookCoverImageUrl = uploadedImage.Url;
+            ShowSuccess("封面已上传，保存图书后生效。");
+        }
+        catch (Exception)
+        {
+            ShowError("封面上传失败，请确认后端接口已启动。");
+        }
+        finally
+        {
+            isUploadingBookCover = false;
+        }
+    }
+
+    private void ClearBookCover()
+    {
+        bookCoverImageUrl = null;
+        ShowSuccess("封面已清除，保存图书后生效。");
+    }
+
+    private void EditRecord(ReadingRecord record)
+    {
+        editingRecordId = record.Id;
+        recordBookIdText = record.BookId.ToString();
+        readDateText = record.ReadDate.ToString("yyyy-MM-dd");
+        chapter = record.Chapter;
+        startedAtText = record.StartedAt.ToString("HH:mm");
+        finishedAtText = record.FinishedAt.ToString("HH:mm");
+        reflectionsText = string.Join(Environment.NewLine, record.Reflections);
+        message = null;
+    }
+
+    private async Task SaveRecordAsync()
+    {
+        if (!TryBuildRecordRequest(out var request))
+        {
+            return;
+        }
+
+        isSavingRecord = true;
+        message = null;
+
+        try
+        {
+            var response = editingRecordId is null
+                ? await Http.PostAsJsonAsync("api/admin/reading-records", request)
+                : await Http.PutAsJsonAsync($"api/admin/reading-records/{editingRecordId}", request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError(await response.Content.ReadAsStringAsync());
+                return;
+            }
+
+            await LoadAsync();
+            ResetRecordForm();
+            ShowSuccess("阅读记录已保存。");
+        }
+        catch (Exception)
+        {
+            ShowError("保存阅读记录失败，请确认后端接口已启动。");
+        }
+        finally
+        {
+            isSavingRecord = false;
+        }
+    }
+
+    private async Task DeleteRecordAsync(Guid id)
+    {
+        try
+        {
+            var response = await Http.DeleteAsync($"api/admin/reading-records/{id}");
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError("删除阅读记录失败。");
+                return;
+            }
+
+            await LoadAsync();
+            if (editingRecordId == id)
+            {
+                ResetRecordForm();
+            }
+
+            ShowSuccess("阅读记录已删除。");
+        }
+        catch (Exception)
+        {
+            ShowError("删除阅读记录失败，请确认后端接口已启动。");
+        }
+    }
+
+    private bool TryBuildBookRequest(out SaveReadingBookRequest request)
+    {
+        request = default!;
+
+        if (string.IsNullOrWhiteSpace(bookTitle) || string.IsNullOrWhiteSpace(bookAuthor))
+        {
+            ShowError("书名和作者不能为空。");
+            return false;
+        }
+
+        request = new SaveReadingBookRequest(bookTitle, bookAuthor, bookCoverTone, bookCoverImageUrl);
+        return true;
+    }
+
+    private bool TryBuildRecordRequest(out SaveReadingRecordRequest request)
+    {
+        request = default!;
+
+        if (!Guid.TryParse(recordBookIdText, out var bookId))
+        {
+            ShowError("请选择图书。");
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(chapter))
+        {
+            ShowError("章节不能为空。");
+            return false;
+        }
+
+        if (!DateOnly.TryParseExact(readDateText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var readDate) ||
+            !TimeOnly.TryParseExact(startedAtText, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startedAt) ||
+            !TimeOnly.TryParseExact(finishedAtText, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var finishedAt))
+        {
+            ShowError("请填写有效的日期和时间。");
+            return false;
+        }
+
+        if (finishedAt <= startedAt)
+        {
+            ShowError("结束时间必须晚于开始时间。");
+            return false;
+        }
+
+        request = new SaveReadingRecordRequest(
+            readDate,
+            bookId,
+            chapter,
+            startedAt,
+            finishedAt,
+            GetReflections());
+
+        return true;
+    }
+
+    private IReadOnlyList<string> GetReflections()
+    {
+        return reflectionsText
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+    }
+
+    private string GetDurationPreview()
+    {
+        if (!TimeOnly.TryParseExact(startedAtText, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var startedAt) ||
+            !TimeOnly.TryParseExact(finishedAtText, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var finishedAt) ||
+            finishedAt <= startedAt)
+        {
+            return "待计算";
+        }
+
+        return $"{Math.Round((finishedAt - startedAt).TotalHours, 1):0.0} 小时";
+    }
+
+    private void ResetBookForm()
+    {
+        editingBookId = null;
+        bookTitle = string.Empty;
+        bookAuthor = string.Empty;
+        bookCoverTone = "midnight";
+        bookCoverImageUrl = null;
+    }
+
+    private void ResetRecordForm()
+    {
+        editingRecordId = null;
+        recordBookIdText = books?.FirstOrDefault()?.Id.ToString() ?? string.Empty;
+        readDateText = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+        chapter = string.Empty;
+        startedAtText = "20:00";
+        finishedAtText = "21:30";
+        reflectionsText = string.Empty;
+    }
+
+    private void OnReadDateChanged(ChangeEventArgs args)
+    {
+        readDateText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnStartedAtChanged(ChangeEventArgs args)
+    {
+        startedAtText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnFinishedAtChanged(ChangeEventArgs args)
+    {
+        finishedAtText = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private ReadingBook? GetSelectedBook()
+    {
+        return Guid.TryParse(recordBookIdText, out var id)
+            ? books?.FirstOrDefault(book => book.Id == id)
+            : null;
+    }
+
+    private void ShowSuccess(string value)
+    {
+        isError = false;
+        message = value;
+    }
+
+    private void ShowError(string value)
+    {
+        isError = true;
+        message = value;
+    }
+
+}

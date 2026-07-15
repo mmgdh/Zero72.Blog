@@ -8,6 +8,7 @@ COPY ["NuGet.Config", "./"]
 COPY ["src/Zero72.Blog.Api/Zero72.Blog.Api.csproj", "src/Zero72.Blog.Api/"]
 COPY ["src/Zero72.Blog.Domain/Zero72.Blog.Domain.csproj", "src/Zero72.Blog.Domain/"]
 COPY ["src/Zero72.Blog.Infrastructure/Zero72.Blog.Infrastructure.csproj", "src/Zero72.Blog.Infrastructure/"]
+COPY ["src/Zero72.Blog.Reading/Zero72.Blog.Reading.csproj", "src/Zero72.Blog.Reading/"]
 COPY ["src/Zero72.Blog.Shared/Zero72.Blog.Shared.csproj", "src/Zero72.Blog.Shared/"]
 RUN dotnet restore "src/Zero72.Blog.Api/Zero72.Blog.Api.csproj"
 COPY . .

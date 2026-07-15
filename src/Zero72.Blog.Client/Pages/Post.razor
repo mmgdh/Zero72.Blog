@@ -1,0 +1,191 @@
+@page "/posts/{Slug}"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+@if (post is null)
+{
+    <PageTitle>正在加载 - Zero72 博客</PageTitle>
+    <main class="main-content">
+        <section class="status-panel">正在加载文章...</section>
+    </main>
+}
+else if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <PageTitle>未找到 - Zero72 博客</PageTitle>
+    <main class="main-content">
+        <section class="status-panel status-error">@errorMessage</section>
+    </main>
+}
+else
+{
+    <PageTitle>@post.Title - Zero72 博客</PageTitle>
+
+    <main class="main-content">
+        <article class="main-article">
+            <header class="hero hero-post">
+                <div class="sub-title">
+                    <NavLink href="/blog">博客</NavLink>
+                    <span>/</span>
+                    <span>发布于 @FormatDate(post.PublishedAt)</span>
+                </div>
+                <h1 class="has-date">@post.Title</h1>
+                <div class="hero-description">@post.Summary</div>
+            </header>
+
+            <div class="markdown-body">@RenderMarkdown(post.ContentMarkdown)</div>
+
+            <footer class="post-after">
+                <NavLink href="/blog">返回文章列表</NavLink>
+            </footer>
+        </article>
+    </main>
+}
+
+@code {
+    [Parameter]
+    public string? Slug { get; set; }
+
+    private BlogPostDetail? post;
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Slug))
+        {
+            errorMessage = "文章不存在。";
+            return;
+        }
+
+        try
+        {
+            post = await Http.GetFromJsonAsync<BlogPostDetail>($"api/posts/{Slug}");
+        }
+        catch (Exception)
+        {
+            errorMessage = "文章不存在。";
+        }
+    }
+
+    private static string FormatDate(DateTimeOffset? publishedAt)
+    {
+        return publishedAt?.ToLocalTime().ToString("yyyy年MM月dd日") ?? "草稿";
+    }
+
+    private static MarkupString RenderMarkdown(string markdown)
+    {
+        var lines = markdown.Replace("\r\n", "\n").Split('\n');
+        var builder = new System.Text.StringBuilder();
+        var inList = false;
+        var inCode = false;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.TrimEnd();
+
+            if (line.StartsWith("```", StringComparison.Ordinal))
+            {
+                if (inCode)
+                {
+                    builder.AppendLine("</code></pre>");
+                    inCode = false;
+                }
+                else
+                {
+                    CloseListIfNeeded();
+                    builder.AppendLine("<pre><code>");
+                    inCode = true;
+                }
+
+                continue;
+            }
+
+            if (inCode)
+            {
+                builder.AppendLine(System.Net.WebUtility.HtmlEncode(line));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                CloseListIfNeeded();
+                continue;
+            }
+
+            if (line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                if (!inList)
+                {
+                    builder.AppendLine("<ul>");
+                    inList = true;
+                }
+
+                builder.Append("<li>");
+                builder.Append(FormatInline(line[2..]));
+                builder.AppendLine("</li>");
+                continue;
+            }
+
+            CloseListIfNeeded();
+
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                AppendBlock("h3", line[4..]);
+            }
+            else if (line.StartsWith("## ", StringComparison.Ordinal))
+            {
+                AppendBlock("h2", line[3..]);
+            }
+            else if (line.StartsWith("# ", StringComparison.Ordinal))
+            {
+                AppendBlock("h1", line[2..]);
+            }
+            else if (line.StartsWith("> ", StringComparison.Ordinal))
+            {
+                AppendBlock("blockquote", line[2..]);
+            }
+            else
+            {
+                AppendBlock("p", line);
+            }
+        }
+
+        CloseListIfNeeded();
+
+        if (inCode)
+        {
+            builder.AppendLine("</code></pre>");
+        }
+
+        return new MarkupString(builder.ToString());
+
+        void AppendBlock(string tag, string value)
+        {
+            builder.Append('<').Append(tag).Append('>');
+            builder.Append(FormatInline(value));
+            builder.Append("</").Append(tag).AppendLine(">");
+        }
+
+        void CloseListIfNeeded()
+        {
+            if (!inList)
+            {
+                return;
+            }
+
+            builder.AppendLine("</ul>");
+            inList = false;
+        }
+    }
+
+    private static string FormatInline(string value)
+    {
+        var encoded = System.Net.WebUtility.HtmlEncode(value);
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"!\[([^\]]*)\]\(([^\)]+)\)",
+            "<img src=\"$2\" alt=\"$1\" />");
+        encoded = System.Text.RegularExpressions.Regex.Replace(encoded, "\\*\\*(.+?)\\*\\*", "<strong>$1</strong>");
+        encoded = System.Text.RegularExpressions.Regex.Replace(encoded, "`(.+?)`", "<code>$1</code>");
+        return encoded;
+    }
+}

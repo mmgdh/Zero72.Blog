@@ -1,0 +1,121 @@
+@page "/blog"
+@inject HttpClient Http
+
+<PageTitle>Zero72 博客</PageTitle>
+
+<main class="main-content page">
+    <header class="hero hero-index">
+        <div class="hero-wrapper">
+            <div>
+                <h1>你好，我是 Zero72！</h1>
+                <p class="hero-description">
+                    我是一名使用 .NET、Blazor、PostgreSQL 和 Docker 构建应用的全栈开发者。
+                    这里记录代码笔记、架构实验和排错故事。
+                </p>
+                <p class="hero-description">
+                    这里的每一篇内容，都来自真实项目中的实践。
+                </p>
+                <p class="large-links">
+                    <a class="large-link" href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer">关于我</a>
+                    <a class="large-link" href="#posts">最新文章</a>
+                </p>
+            </div>
+            <div class="hero-image-container">
+                <img src="img/author-cover.jpg" class="hero-image" alt="Zero72" />
+            </div>
+        </div>
+    </header>
+
+    @if (posts is null)
+    {
+        <section class="status-panel">正在加载文章...</section>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <section class="status-panel status-error">@errorMessage</section>
+    }
+    else if (posts.Count == 0)
+    {
+        <section class="status-panel">还没有已发布的文章。</section>
+    }
+    else
+    {
+        var latestArticles = posts.Take(5).ToList();
+        var highlightPosts = posts.Take(9).ToList();
+
+        <section class="section-index" id="posts">
+            <header class="heading">
+                <h2>
+                    <span class="heading-icon">B</span>
+                    <span>博客</span>
+                </h2>
+                <div class="description">指南、参考资料和实践教程。</div>
+            </header>
+            <div class="posts">
+                @foreach (var post in latestArticles)
+                {
+                    <NavLink class="post" href="@GetPostUrl(post)">
+                        <time datetime="@FormatMachineDate(post.PublishedAt)">@FormatDisplayDate(post.PublishedAt)</time>
+                        <div>@post.Title</div>
+                    </NavLink>
+                }
+            </div>
+        </section>
+
+        <section class="section-index">
+            <header class="heading">
+                <h2>
+                    <span>深度文章</span>
+                </h2>
+                <div class="description">长文记录和聚焦开发主题的整理。</div>
+            </header>
+            <div class="cards">
+                @foreach (var post in highlightPosts)
+                {
+                    <NavLink class="card card-highlight" href="@GetPostUrl(post)">
+                        <span class="card-thumb">@GetInitial(post.Title)</span>
+                        <div>@post.Title</div>
+                    </NavLink>
+                }
+            </div>
+        </section>
+    }
+</main>
+
+@code {
+    private List<BlogPostSummary>? posts;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            posts = await Http.GetFromJsonAsync<List<BlogPostSummary>>("api/posts") ?? [];
+        }
+        catch (Exception)
+        {
+            posts = [];
+            errorMessage = "无法从后端接口读取文章。";
+        }
+    }
+
+    private static string GetPostUrl(BlogPostSummary post)
+    {
+        return $"/posts/{post.Slug}";
+    }
+
+    private static string FormatDisplayDate(DateTimeOffset? publishedAt)
+    {
+        return publishedAt?.ToLocalTime().ToString("MM月dd日") ?? "草稿";
+    }
+
+    private static string FormatMachineDate(DateTimeOffset? publishedAt)
+    {
+        return publishedAt?.ToString("yyyy-MM-dd") ?? string.Empty;
+    }
+
+    private static string GetInitial(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? "Z" : value.Trim()[0].ToString().ToUpperInvariant();
+    }
+}

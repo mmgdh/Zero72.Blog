@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zero72.Blog.Domain\Zero72.Blog.Domain.csproj" />
+    <ProjectReference Include="..\Zero72.Blog.Reading\Zero72.Blog.Reading.csproj" />
   </ItemGroup>
 
 </Project>

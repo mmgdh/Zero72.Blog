@@ -1,0 +1,420 @@
+@page "/posts/new"
+@page "/posts/{PostId:guid}"
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>@(IsNew ? "新建文章" : "编辑文章") - Zero72 后台</PageTitle>
+
+<header class="page-header">
+    <div>
+        <p>Markdown 编辑器</p>
+        <h1>@(IsNew ? "新建文章" : "编辑文章")</h1>
+    </div>
+    <div class="header-actions">
+        <NavLink class="button-secondary" href="">返回列表</NavLink>
+        @if (!IsNew)
+        {
+            <button class="button-danger" type="button" @onclick="DeletePostAsync">删除</button>
+        }
+        <button class="button-primary" type="button" disabled="@isSaving" @onclick="SaveAsync">
+            @(isSaving ? "保存中..." : "保存")
+        </button>
+    </div>
+</header>
+
+@if (isLoading)
+{
+    <section class="empty-state">正在加载文章...</section>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <section class="message @(isError ? "error" : "success")">@message</section>
+    }
+
+    <section class="editor-layout">
+        <form class="editor-form">
+            <label>
+                <span>标题</span>
+                <input value="@title" @oninput="OnTitleChanged" placeholder="输入文章标题" />
+            </label>
+
+            <label>
+                <span>链接标识</span>
+                <input @bind="slug" placeholder="留空时会根据标题自动生成" />
+            </label>
+
+            <label>
+                <span>摘要</span>
+                <textarea class="summary-input" @bind="summary" placeholder="用于首页卡片和文章头部展示"></textarea>
+            </label>
+
+            <label class="publish-toggle">
+                <input type="checkbox" @bind="isPublished" />
+                <span>保存后发布</span>
+            </label>
+
+            <div class="markdown-field">
+                <div class="markdown-toolbar">
+                    <span>Markdown</span>
+                    <label class="upload-button">
+                        <InputFile OnChange="UploadImageAsync" accept="image/png,image/jpeg,image/webp,image/gif" />
+                        <span>@(isUploadingImage ? "上传中..." : "插入图片")</span>
+                    </label>
+                </div>
+                <textarea @ref="markdownTextarea" @bind="contentMarkdown" @bind:event="oninput" spellcheck="false" placeholder="# 标题&#10;&#10;开始写作..."></textarea>
+            </div>
+        </form>
+
+        <section class="preview-pane">
+            <div class="preview-toolbar">
+                <span>实时预览</span>
+                <small>@contentMarkdown.Length 字符</small>
+            </div>
+            <article class="markdown-preview">@RenderMarkdown(contentMarkdown)</article>
+        </section>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid? PostId { get; set; }
+
+    private bool IsNew => PostId is null;
+
+    private bool isLoading;
+    private bool isSaving;
+    private bool isUploadingImage;
+    private bool isError;
+    private string? message;
+    private string title = string.Empty;
+    private string slug = string.Empty;
+    private string summary = string.Empty;
+    private string contentMarkdown = "# 新文章\n\n在这里开始写 Markdown。";
+    private bool isPublished;
+    private ElementReference markdownTextarea;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        message = null;
+
+        if (IsNew)
+        {
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            var post = await Http.GetFromJsonAsync<AdminBlogPostEdit>($"api/admin/posts/{PostId}");
+            if (post is null)
+            {
+                ShowError("文章不存在。");
+                return;
+            }
+
+            title = post.Title;
+            slug = post.Slug;
+            summary = post.Summary;
+            contentMarkdown = post.ContentMarkdown;
+            isPublished = post.IsPublished;
+        }
+        catch (Exception)
+        {
+            ShowError("无法读取文章，请确认后端接口已启动。");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OnTitleChanged(ChangeEventArgs args)
+    {
+        title = args.Value?.ToString() ?? string.Empty;
+
+        if (IsNew && string.IsNullOrWhiteSpace(slug))
+        {
+            slug = ToSlug(title);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        message = null;
+
+        if (string.IsNullOrWhiteSpace(title) ||
+            string.IsNullOrWhiteSpace(summary) ||
+            string.IsNullOrWhiteSpace(contentMarkdown))
+        {
+            ShowError("标题、摘要和 Markdown 内容都不能为空。");
+            return;
+        }
+
+        isSaving = true;
+        try
+        {
+            var request = new SaveBlogPostRequest(title, slug, summary, contentMarkdown, isPublished);
+            HttpResponseMessage response;
+
+            if (IsNew)
+            {
+                response = await Http.PostAsJsonAsync("api/admin/posts", request);
+            }
+            else
+            {
+                response = await Http.PutAsJsonAsync($"api/admin/posts/{PostId}", request);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError(await response.Content.ReadAsStringAsync());
+                return;
+            }
+
+            var savedPost = await response.Content.ReadFromJsonAsync<AdminBlogPostEdit>();
+            if (savedPost is not null)
+            {
+                title = savedPost.Title;
+                slug = savedPost.Slug;
+                summary = savedPost.Summary;
+                contentMarkdown = savedPost.ContentMarkdown;
+                isPublished = savedPost.IsPublished;
+
+                if (IsNew)
+                {
+                    Navigation.NavigateTo($"posts/{savedPost.Id}");
+                    return;
+                }
+            }
+
+            ShowSuccess("已保存。");
+        }
+        catch (Exception)
+        {
+            ShowError("保存失败，请确认后端接口已启动。");
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task DeletePostAsync()
+    {
+        if (IsNew)
+        {
+            return;
+        }
+
+        try
+        {
+            var response = await Http.DeleteAsync($"api/admin/posts/{PostId}");
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError("删除失败。");
+                return;
+            }
+
+            Navigation.NavigateTo("");
+        }
+        catch (Exception)
+        {
+            ShowError("删除失败，请确认后端接口已启动。");
+        }
+    }
+
+    private async Task UploadImageAsync(InputFileChangeEventArgs args)
+    {
+        var file = args.File;
+        const long maxImageSize = 5 * 1024 * 1024;
+
+        if (file.Size > maxImageSize)
+        {
+            ShowError("图片不能超过 5 MB。");
+            return;
+        }
+
+        isUploadingImage = true;
+        message = null;
+
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            await using var stream = file.OpenReadStream(maxImageSize);
+            using var content = new StreamContent(stream);
+            content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+            form.Add(content, "file", file.Name);
+
+            var response = await Http.PostAsync("api/admin/assets/images", form);
+            if (!response.IsSuccessStatusCode)
+            {
+                ShowError(await response.Content.ReadAsStringAsync());
+                return;
+            }
+
+            var uploadedImage = await response.Content.ReadFromJsonAsync<UploadImageResponse>();
+            if (uploadedImage is null)
+            {
+                ShowError("图片上传失败。");
+                return;
+            }
+
+            var altText = Path.GetFileNameWithoutExtension(uploadedImage.FileName);
+            var markdown = $"{Environment.NewLine}![{altText}]({uploadedImage.Url}){Environment.NewLine}";
+            contentMarkdown = await JS.InvokeAsync<string>(
+                "zero72AdminEditor.insertAtCursor",
+                markdownTextarea,
+                markdown);
+
+            ShowSuccess("图片已插入。");
+        }
+        catch (Exception)
+        {
+            ShowError("图片上传失败，请确认后端接口已启动。");
+        }
+        finally
+        {
+            isUploadingImage = false;
+        }
+    }
+
+    private void ShowSuccess(string value)
+    {
+        isError = false;
+        message = value;
+    }
+
+    private void ShowError(string value)
+    {
+        isError = true;
+        message = value;
+    }
+
+    private static string ToSlug(string value)
+    {
+        return System.Text.RegularExpressions.Regex
+            .Replace(value.Trim().ToLowerInvariant(), "[^a-z0-9]+", "-")
+            .Trim('-');
+    }
+
+    private static MarkupString RenderMarkdown(string markdown)
+    {
+        var lines = markdown.Replace("\r\n", "\n").Split('\n');
+        var builder = new System.Text.StringBuilder();
+        var inList = false;
+        var inCode = false;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.TrimEnd();
+
+            if (line.StartsWith("```", StringComparison.Ordinal))
+            {
+                if (inCode)
+                {
+                    builder.AppendLine("</code></pre>");
+                    inCode = false;
+                }
+                else
+                {
+                    CloseListIfNeeded();
+                    builder.AppendLine("<pre><code>");
+                    inCode = true;
+                }
+
+                continue;
+            }
+
+            if (inCode)
+            {
+                builder.AppendLine(System.Net.WebUtility.HtmlEncode(line));
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                CloseListIfNeeded();
+                continue;
+            }
+
+            if (line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                if (!inList)
+                {
+                    builder.AppendLine("<ul>");
+                    inList = true;
+                }
+
+                builder.Append("<li>");
+                builder.Append(FormatInline(line[2..]));
+                builder.AppendLine("</li>");
+                continue;
+            }
+
+            CloseListIfNeeded();
+
+            if (line.StartsWith("### ", StringComparison.Ordinal))
+            {
+                AppendBlock("h3", line[4..]);
+            }
+            else if (line.StartsWith("## ", StringComparison.Ordinal))
+            {
+                AppendBlock("h2", line[3..]);
+            }
+            else if (line.StartsWith("# ", StringComparison.Ordinal))
+            {
+                AppendBlock("h1", line[2..]);
+            }
+            else if (line.StartsWith("> ", StringComparison.Ordinal))
+            {
+                AppendBlock("blockquote", line[2..]);
+            }
+            else
+            {
+                AppendBlock("p", line);
+            }
+        }
+
+        CloseListIfNeeded();
+
+        if (inCode)
+        {
+            builder.AppendLine("</code></pre>");
+        }
+
+        return new MarkupString(builder.ToString());
+
+        void AppendBlock(string tag, string value)
+        {
+            builder.Append('<').Append(tag).Append('>');
+            builder.Append(FormatInline(value));
+            builder.Append("</").Append(tag).AppendLine(">");
+        }
+
+        void CloseListIfNeeded()
+        {
+            if (!inList)
+            {
+                return;
+            }
+
+            builder.AppendLine("</ul>");
+            inList = false;
+        }
+    }
+
+    private static string FormatInline(string value)
+    {
+        var encoded = System.Net.WebUtility.HtmlEncode(value);
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"!\[([^\]]*)\]\(([^\)]+)\)",
+            "<img src=\"$2\" alt=\"$1\" />");
+        encoded = System.Text.RegularExpressions.Regex.Replace(encoded, "\\*\\*(.+?)\\*\\*", "<strong>$1</strong>");
+        encoded = System.Text.RegularExpressions.Regex.Replace(encoded, "`(.+?)`", "<code>$1</code>");
+        return encoded;
+    }
+}

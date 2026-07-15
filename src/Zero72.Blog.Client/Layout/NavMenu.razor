@@ -1,29 +1,80 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">Zero72.Blog</a>
-        <button title="Navigation menu" class="navbar-toggler" @onclick="ToggleNavMenu">
-            <span class="navbar-toggler-icon"></span>
-        </button>
+<header class="navbar">
+    <div class="navbar-title">
+        <NavLink class="navbar-title-link" href="/blog" Match="NavLinkMatch.All">
+            <span class="navbar-logo">Z</span>
+            <span class="site-name">Zero72 博客</span>
+        </NavLink>
     </div>
-</div>
 
-<div class="@NavMenuCssClass nav-scrollable" @onclick="ToggleNavMenu">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-    </nav>
-</div>
+    <div class="navbar-container">
+        <section class="navbar-section navbar-section-search">
+            <input class="searchbar with-icon" placeholder="搜索" aria-label="搜索" />
+        </section>
+
+        <section class="navbar-section">
+            <button type="button" title="导航菜单" class="@NavButtonCssClass" @onclick="ToggleNavMenu">
+                <span class="menu-line"></span>
+                <span class="menu-line"></span>
+                <span class="menu-line"></span>
+            </button>
+
+            <nav class="@NavMenuCssClass">
+                <NavLink href="/blog" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
+                    <span class="nav-image">B</span>
+                    博客
+                </NavLink>
+                <NavLink href="/notes" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
+                    <span class="nav-image">N</span>
+                    随笔
+                </NavLink>
+                <NavLink href="/projects" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
+                    <span class="nav-image">P</span>
+                    项目
+                </NavLink>
+                <NavLink href="/reading" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
+                    <span class="nav-image">R</span>
+                    阅读记录
+                </NavLink>
+                <NavLink href="/books" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
+                    <span class="nav-image">K</span>
+                    已读图书
+                </NavLink>
+                <a href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer" @onclick="CloseNavMenu">
+                    <span class="nav-image">A</span>
+                    关于我
+                </a>
+            </nav>
+
+            <nav class="navbar-menu social">
+                <button class="navbar-button" type="button" title="切换主题" onclick="zero72Theme.toggle()">
+                    <span class="theme-glyph"></span>
+                </button>
+                <button class="navbar-button" type="button" title="切换强调色" onclick="zero72Theme.toggleColor()">
+                    <span class="color-dot"></span>
+                </button>
+            </nav>
+        </section>
+    </div>
+</header>
 
 @code {
     private bool collapseNavMenu = true;
 
-    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+    private string NavButtonCssClass => collapseNavMenu
+        ? "navbar-button nav-menu-button"
+        : "navbar-button nav-menu-button active";
+
+    private string NavMenuCssClass => collapseNavMenu
+        ? "navbar-menu nav-items"
+        : "navbar-menu nav-items active";
 
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
+    }
+
+    private void CloseNavMenu()
+    {
+        collapseNavMenu = true;
     }
 }

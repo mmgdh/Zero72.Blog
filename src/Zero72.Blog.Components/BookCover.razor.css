@@ -1,0 +1,88 @@
+.book-cover {
+    aspect-ratio: 7 / 10;
+    border-radius: 6px;
+    box-shadow: 0 8px 16px rgba(15, 23, 42, .16);
+    color: #fff;
+    display: flex;
+    font-weight: 900;
+    justify-content: center;
+    line-height: 1.18;
+    overflow: hidden;
+    text-align: center;
+    width: var(--book-cover-width);
+}
+
+.book-cover.is-generated {
+    align-items: center;
+    padding: var(--book-cover-padding);
+}
+
+.book-cover.is-image {
+    background: #fff;
+    display: block;
+    object-fit: cover;
+    padding: 0;
+}
+
+.book-cover-card {
+    --book-cover-padding: .25rem;
+    --book-cover-width: 46px;
+    border-radius: 5px;
+    font-size: .62rem;
+}
+
+.book-cover-timeline {
+    --book-cover-padding: .5rem;
+    --book-cover-width: 70px;
+    border-radius: 6px;
+    box-shadow: 0 12px 22px rgba(15, 23, 42, .14);
+    font-size: .72rem;
+}
+
+.book-cover-detail {
+    --book-cover-padding: .55rem;
+    --book-cover-width: 92px;
+    border-radius: 7px;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, .18);
+    font-size: .78rem;
+}
+
+.book-cover-admin {
+    --book-cover-padding: .35rem;
+    --book-cover-width: 52px;
+    border-radius: 6px;
+    font-size: .66rem;
+}
+
+.tone-midnight {
+    background: linear-gradient(155deg, #050816, #111827 45%, #1d4ed8);
+}
+
+.tone-paper {
+    background: linear-gradient(145deg, #fff7ed, #f8fafc 48%, #ef4444);
+    color: #7f1d1d;
+}
+
+.tone-linen {
+    background: linear-gradient(145deg, #fffbeb, #f8fafc 56%, #d1d5db);
+    color: #334155;
+}
+
+.tone-cosmos {
+    background: radial-gradient(circle at 50% 52%, #f97316 0 8px, transparent 10px), linear-gradient(145deg, #020617, #172554);
+}
+
+.tone-sparrow {
+    background: linear-gradient(145deg, #f8fafc, #fef3c7 58%, #0f172a);
+    color: #1f2937;
+}
+
+.tone-ocean {
+    background: linear-gradient(160deg, #e0f2fe, #1d4ed8 62%, #0f172a);
+}
+
+@media screen and (max-width: 560px) {
+    .book-cover-timeline {
+        --book-cover-width: 56px;
+    }
+}

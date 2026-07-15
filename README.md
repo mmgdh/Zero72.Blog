@@ -12,7 +12,8 @@ Personal blog project scaffold with:
 ## Project Structure
 
 - `src/Zero72.Blog.Client`: Blazor WebAssembly frontend.
-- `src/Zero72.Blog.ClientHost`: ASP.NET Core static-file host for the published WASM app.
+- `src/Zero72.Blog.Admin`: Blazor WebAssembly admin frontend.
+- `src/Zero72.Blog.ClientHost`: ASP.NET Core static-file host used by the client and admin containers.
 - `src/Zero72.Blog.Api`: ASP.NET Core Web API.
 - `src/Zero72.Blog.Shared`: DTOs shared by frontend and backend.
 - `src/Zero72.Blog.Domain`: Domain entities.
@@ -47,16 +48,28 @@ dotnet run --project src/Zero72.Blog.Api
 dotnet run --project src/Zero72.Blog.Client
 ```
 
+Run the unified host locally after publishing the client:
+
+```powershell
+dotnet publish src/Zero72.Blog.Client -c Release -o .tmp/client-publish
+dotnet publish src/Zero72.Blog.ClientHost -c Release -o .tmp/web-publish
+```
+
 ## Docker
 
 ```powershell
 docker compose up --build
+
+docker compose down --remove-orphans 
+docker compose build api client admin --no-cache 
+docker compose up -d
 ```
 
 Default ports:
 
-- Client: `http://localhost:8080`
+- Blog client: `http://localhost:8080`
+- Admin client: `http://localhost:8081`
 - API: `http://localhost:5000`
 - PostgreSQL: `localhost:5432`
 
-The client container uses `mcr.microsoft.com/dotnet/aspnet` to serve static files, so it does not need the Docker Hub `nginx` image.
+Docker Compose starts all services together while keeping them separated: `api`, `client`, `admin`, and `postgres`.

@@ -1,0 +1,133 @@
+.book-reading-page {
+    --book-blue: #3b82f6;
+    --book-border: #e4eaf3;
+    --book-muted: #6b7892;
+    color: #172033;
+    max-width: 980px;
+}
+
+.book-detail-hero {
+    align-items: center;
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
+    margin-bottom: 2rem;
+}
+
+.book-detail-hero h1 {
+    color: #111827;
+    font-size: 2rem;
+    margin: 0 0 .35rem;
+}
+
+.book-detail-hero p {
+    color: var(--book-muted);
+    margin: 0;
+}
+
+.eyebrow {
+    color: var(--book-blue) !important;
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.book-stats {
+    color: #46556f;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .75rem;
+    font-size: .9rem;
+    font-weight: 800;
+    margin-top: .75rem;
+}
+
+.back-link {
+    background: #f8fbff;
+    border: 1px solid #cfe0ff;
+    border-radius: 8px;
+    color: #2563eb;
+    font-weight: 800;
+    min-height: 40px;
+    padding: .6rem .9rem;
+    text-decoration: none;
+}
+
+.book-detail-cover-link {
+    display: inline-block;
+    text-decoration: none;
+}
+
+.book-record-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.book-record-day {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.record-date {
+    padding-top: 1rem;
+}
+
+.record-date time {
+    color: #111827;
+    display: block;
+    font-weight: 900;
+}
+
+.record-date span {
+    color: var(--book-muted);
+    font-size: .85rem;
+}
+
+.record-items {
+    display: grid;
+    gap: .8rem;
+}
+
+.record-card {
+    background: rgba(255, 255, 255, .88);
+    border: 1px solid var(--book-border);
+    border-radius: 10px;
+    box-shadow: 0 14px 34px rgba(31, 41, 55, .08);
+    display: grid;
+    gap: .85rem;
+    padding: 1rem;
+}
+
+.record-card h2 {
+    color: #111827;
+    font-size: 1rem;
+    margin: 0 0 .3rem;
+}
+
+.record-card p {
+    color: var(--book-muted);
+    margin: 0;
+}
+
+.record-card ul {
+    background: #f8fbff;
+    border-radius: 8px;
+    color: #334155;
+    display: grid;
+    gap: .45rem;
+    margin: 0;
+    padding: .85rem .85rem .85rem 1.8rem;
+}
+
+@media screen and (max-width: 760px) {
+    .book-detail-hero,
+    .book-record-day {
+        grid-template-columns: 1fr;
+    }
+
+    .book-detail-cover-link {
+        max-width: 92px;
+    }
+}

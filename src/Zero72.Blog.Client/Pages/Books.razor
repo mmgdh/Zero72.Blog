@@ -1,0 +1,86 @@
+@page "/books"
+@inject HttpClient Http
+
+<PageTitle>已读图书 - Zero72 博客</PageTitle>
+
+<main class="main-content page books-page">
+    <header class="books-hero">
+        <div>
+            <p class="eyebrow">阅读书架</p>
+            <h1>已读图书</h1>
+            <p>所有读过的书集中维护，阅读记录只记录具体进度和感悟。</p>
+        </div>
+        <a class="back-link" href="/reading">查看时间线</a>
+    </header>
+
+    @if (books is null)
+    {
+        <section class="status-panel">正在加载已读图书...</section>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <section class="status-panel status-error">@errorMessage</section>
+    }
+    else if (books.Count == 0)
+    {
+        <section class="status-panel">还没有已读图书。</section>
+    }
+    else
+    {
+        <section class="book-grid" aria-label="已读图书">
+            @foreach (var book in books)
+            {
+                <a class="book-card" href="@GetBookUrl(book.Id)">
+                    <span class="book-cover-frame">
+                        <BookCover Title="@book.Title" CoverTone="@book.CoverTone" CoverImageUrl="@book.CoverImageUrl" Variant="BookCoverVariant.Card" />
+                    </span>
+                    <span class="book-card-copy">
+                        <strong>@book.Title</strong>
+                        <small>@book.Author</small>
+                        <span class="book-card-meta">
+                            <span>@book.RecordCount 条记录</span>
+                            <span>@book.TotalHours.ToString("0.0") 小时</span>
+                        </span>
+                        <span class="book-card-range">@GetDateRange(book)</span>
+                    </span>
+                </a>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    private List<ReadingBook>? books;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            books = await Http.GetFromJsonAsync<List<ReadingBook>>("api/reading-books") ?? [];
+        }
+        catch (Exception)
+        {
+            books = [];
+            errorMessage = "无法读取已读图书，请确认后端接口已启动。";
+        }
+    }
+
+    private static string GetBookUrl(Guid bookId)
+    {
+        return $"/books/{bookId}";
+    }
+
+    private static string GetDateRange(ReadingBook book)
+    {
+        if (book.FirstReadDate is null || book.LastReadDate is null)
+        {
+            return "还没有阅读记录";
+        }
+
+        return book.FirstReadDate == book.LastReadDate
+            ? book.FirstReadDate.Value.ToString("yyyy-MM-dd")
+            : $"{book.FirstReadDate.Value:yyyy-MM-dd} ~ {book.LastReadDate.Value:yyyy-MM-dd}";
+    }
+
+}
