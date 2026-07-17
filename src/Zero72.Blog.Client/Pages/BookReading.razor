@@ -54,12 +54,18 @@
                                     <h2>@record.Chapter</h2>
                                     <p>@record.StartedAt.ToString("HH:mm") - @record.FinishedAt.ToString("HH:mm") · @record.DurationHours.ToString("0.0") 小时</p>
                                 </div>
-                                <ul>
-                                    @foreach (var reflection in record.Reflections)
-                                    {
-                                        <li>@reflection</li>
-                                    }
-                                </ul>
+                                @if (record.Reflections.Count > 0)
+                                {
+                                    <section class="record-reflections">
+                                        <header><h3>本次阅读想法</h3><span>@record.Reflections.Count 条</span></header>
+                                        <ol>
+                                            @foreach (var reflection in record.Reflections)
+                                            {
+                                                <li class="@(reflection.Length > 72 ? "long" : null)">@reflection</li>
+                                            }
+                                        </ol>
+                                    </section>
+                                }
                             </article>
                         }
                     </div>

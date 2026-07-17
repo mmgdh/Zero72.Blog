@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject SessionState Session
+@inject AppUpdateService AppUpdates
 
 <div class="app-shell">
     <header class="app-header">
@@ -29,22 +30,128 @@
     }
 </div>
 
+@if (availableUpdate is not null)
+{
+    <div class="update-backdrop" role="presentation">
+        <section class="update-dialog" role="dialog" aria-modal="true" aria-labelledby="update-title">
+            <span class="update-icon" aria-hidden="true">↑</span>
+            <p class="eyebrow">发现新版本</p>
+            <h2 id="update-title">博客助手 @availableUpdate.VersionName</h2>
+            <div class="update-version-row">
+                <span>当前 @AppUpdates.CurrentVersion</span>
+                <span>最新 @availableUpdate.VersionName (@availableUpdate.VersionCode)</span>
+            </div>
+            <p class="update-notes">@(string.IsNullOrWhiteSpace(availableUpdate.ReleaseNotes) ? "包含功能优化与稳定性改进。" : availableUpdate.ReleaseNotes)</p>
+            @if (!string.IsNullOrWhiteSpace(updateError))
+            {
+                <div class="alert error">@updateError</div>
+            }
+            <div class="update-actions">
+                <button class="primary" disabled="@isOpeningDownload" @onclick="OpenUpdateAsync">
+                    @(isOpeningDownload ? "正在打开…" : "立即更新")
+                </button>
+                @if (!availableUpdate.Required)
+                {
+                    <button class="secondary" disabled="@isOpeningDownload" @onclick="DismissUpdate">稍后提醒</button>
+                }
+            </div>
+            <small>安装包将通过系统浏览器下载，下载完成后由 Android 确认安装。</small>
+        </section>
+    </div>
+}
+
 @code {
-    // 订阅会话变化，使登录和退出后导航立即刷新。
+    private readonly CancellationTokenSource updateCancellation = new();
+    private MobileReleaseInfo? availableUpdate;
+    private string? updateError;
+    private bool isOpeningDownload;
+
+    /// <summary>
+    /// 订阅会话变化，使登录和退出后的底部导航立即刷新。
+    /// </summary>
     protected override void OnInitialized()
     {
         Session.Changed += OnSessionChanged;
     }
 
-    // 将会话变化切换回 Blazor 渲染上下文。
+    /// <summary>
+    /// 首次渲染完成后静默检查服务器版本，网络异常不会打断正常使用。
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            availableUpdate = await AppUpdates.CheckAsync(updateCancellation.Token);
+            if (availableUpdate is not null)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (updateCancellation.IsCancellationRequested)
+        {
+            // 布局销毁时正常结束检查。
+        }
+        catch
+        {
+            // 自动检查保持静默，用户仍可在设置页手动检查并查看详细错误。
+        }
+    }
+
+    /// <summary>
+    /// 将会话变化切换回 Blazor 渲染上下文。
+    /// </summary>
     private void OnSessionChanged()
     {
         _ = InvokeAsync(StateHasChanged);
     }
 
-    // 页面销毁时取消订阅，避免布局实例被长期引用。
+    /// <summary>
+    /// 打开服务器上的版本化 APK 下载地址，并在失败时显示可读详情。
+    /// </summary>
+    private async Task OpenUpdateAsync()
+    {
+        if (availableUpdate is null)
+        {
+            return;
+        }
+
+        isOpeningDownload = true;
+        updateError = null;
+        try
+        {
+            await AppUpdates.OpenDownloadAsync(availableUpdate);
+        }
+        catch (Exception exception)
+        {
+            updateError = exception.Message;
+        }
+        finally
+        {
+            isOpeningDownload = false;
+        }
+    }
+
+    /// <summary>
+    /// 关闭非强制更新提示，本次应用运行期间不再弹出。
+    /// </summary>
+    private void DismissUpdate()
+    {
+        availableUpdate = null;
+        updateError = null;
+    }
+
+    /// <summary>
+    /// 取消版本检查并解除会话订阅，避免布局实例被长期引用。
+    /// </summary>
     public void Dispose()
     {
         Session.Changed -= OnSessionChanged;
+        updateCancellation.Cancel();
+        updateCancellation.Dispose();
     }
 }

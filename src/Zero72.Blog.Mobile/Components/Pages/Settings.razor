@@ -1,6 +1,7 @@
 @page "/settings"
 @inject MobileSettingsService MobileSettings
 @inject BlogApiClient Api
+@inject AppUpdateService AppUpdates
 @inject SessionState Session
 @inject NavigationManager Navigation
 
@@ -10,7 +11,7 @@
     <header class="page-heading">
         <p class="eyebrow">连接与账号</p>
         <h1>设置</h1>
-        <p>服务器地址应指向可在手机访问的博客公开地址。</p>
+        <p>管理博客服务器连接、登录状态和安卓应用版本。</p>
     </header>
 
     @if (!string.IsNullOrWhiteSpace(message))
@@ -29,6 +30,27 @@
 
     <section class="panel">
         <div class="section-title">
+            <div><h2>应用更新</h2><p>当前版本 @AppUpdates.CurrentVersion</p></div>
+            <span class="version-badge">Android</span>
+        </div>
+        @if (availableUpdate is not null)
+        {
+            <div class="available-update">
+                <strong>发现 @availableUpdate.VersionName (@availableUpdate.VersionCode)</strong>
+                <p>@(string.IsNullOrWhiteSpace(availableUpdate.ReleaseNotes) ? "包含功能优化与稳定性改进。" : availableUpdate.ReleaseNotes)</p>
+                <button class="primary" disabled="@isCheckingUpdate" @onclick="OpenUpdateAsync">下载安装包</button>
+            </div>
+        }
+        else
+        {
+            <button class="secondary" disabled="@isCheckingUpdate" @onclick="CheckUpdateAsync">
+                @(isCheckingUpdate ? "正在检查…" : "检查新版本")
+            </button>
+        }
+    </section>
+
+    <section class="panel">
+        <div class="section-title">
             <div><h2>当前账号</h2><p>@(Session.IsAuthenticated ? Session.UserName : "尚未登录")</p></div>
         </div>
         @if (Session.IsAuthenticated)
@@ -43,7 +65,7 @@
 
     <section class="panel subtle-panel">
         <h2>安全说明</h2>
-        <p>应用不会保存密码。登录状态由系统内存中的 Cookie 维持，应用进程结束后需要重新登录。</p>
+        <p>应用不会保存密码。登录状态由进程内 Cookie 维持；安装更新时 Android 会要求你确认安装来源和应用签名。</p>
     </section>
 </section>
 
@@ -51,6 +73,8 @@
     private string baseUrl = string.Empty;
     private string? message;
     private bool isError;
+    private bool isCheckingUpdate;
+    private MobileReleaseInfo? availableUpdate;
 
     /// <summary>
     /// 读取当前保存的服务器地址。
@@ -79,6 +103,59 @@
         {
             isError = true;
             message = $"连接失败：{exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 手动检查服务器升级清单，并显示没有更新或请求失败的明确结果。
+    /// </summary>
+    private async Task CheckUpdateAsync()
+    {
+        isCheckingUpdate = true;
+        message = null;
+        isError = false;
+        try
+        {
+            availableUpdate = await AppUpdates.CheckAsync();
+            if (availableUpdate is null)
+            {
+                message = "当前已经是最新版本。";
+            }
+        }
+        catch (Exception exception)
+        {
+            isError = true;
+            message = $"检查更新失败：{exception.Message}";
+        }
+        finally
+        {
+            isCheckingUpdate = false;
+        }
+    }
+
+    /// <summary>
+    /// 通过系统浏览器打开已校验的 APK 下载地址。
+    /// </summary>
+    private async Task OpenUpdateAsync()
+    {
+        if (availableUpdate is null)
+        {
+            return;
+        }
+
+        isCheckingUpdate = true;
+        try
+        {
+            await AppUpdates.OpenDownloadAsync(availableUpdate);
+        }
+        catch (Exception exception)
+        {
+            isError = true;
+            message = $"打开下载失败：{exception.Message}";
+        }
+        finally
+        {
+            isCheckingUpdate = false;
         }
     }
 

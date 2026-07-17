@@ -60,6 +60,7 @@ services:
       - "${CLIENT_PORT}:8080"
     volumes:
       - client-data-protection-keys:/root/.aspnet/DataProtection-Keys
+      - ./deploy/runtime/mobile:/app/wwwroot/mobile
 
   admin:
     build:

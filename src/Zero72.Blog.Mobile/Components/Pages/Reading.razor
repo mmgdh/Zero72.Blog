@@ -73,9 +73,17 @@
                     </div>
                     <h2>@record.BookTitle</h2>
                     <p class="meta">@record.Chapter</p>
-                    @foreach (var reflection in record.Reflections)
+                    @if (record.Reflections.Count > 0)
                     {
-                        <p class="reflection">@reflection</p>
+                        <section class="mobile-reflections">
+                            <header><strong>阅读想法</strong><span>@record.Reflections.Count 条</span></header>
+                            <ol>
+                                @foreach (var reflection in record.Reflections)
+                                {
+                                    <li>@reflection</li>
+                                }
+                            </ol>
+                        </section>
                     }
                     <div class="card-actions">
                         <button class="text-button" @onclick="() => Edit(record)">编辑</button>

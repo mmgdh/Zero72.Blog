@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Zero72.Blog.Deployer.Models;
 
@@ -9,10 +11,20 @@ namespace Zero72.Blog.Deployer.Services;
 /// 编排博客发布全过程：校验配置、本地检查、生成安全源码包、上传到 ECS、
 /// 在服务器构建新镜像、切换 Compose 服务并执行健康检查；远程脚本在失败时自动回滚。
 /// </summary>
-public sealed partial class DeploymentService(ProcessRunner processRunner)
+public sealed partial class DeploymentService(
+    ProcessRunner processRunner,
+    PasswordSshClient passwordSshClient)
 {
     private const string SolutionFileName = "Zero72.Blog.slnx";
     private const string ProductionComposeFileName = "docker-compose.prod.yml";
+
+    /// <summary>
+    /// 使用系统命令执行器和默认密码 SSH 客户端初始化发布服务。
+    /// </summary>
+    public DeploymentService(ProcessRunner processRunner)
+        : this(processRunner, new PasswordSshClient())
+    {
+    }
 
     /// <summary>
     /// 测试 SSH 连接、免密 sudo Docker 权限和远程部署目录。
@@ -25,13 +37,26 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
         ValidateSettings(settings, requireProjectFiles: false);
         progress.Report("正在测试 SSH 和 Docker 权限……");
 
-        var command = $"test -d {settings.RemoteRoot} && sudo -n docker version >/dev/null && printf CONNECTION_OK";
-        await processRunner.RunAsync(
-            "ssh.exe",
-            BuildSshArguments(settings, command),
-            Environment.CurrentDirectory,
-            progress,
-            cancellationToken);
+        var command = $"test -d {settings.RemoteRoot} && " +
+            "if [ \"$(id -u)\" = \"0\" ]; then docker version >/dev/null; " +
+            "else sudo -n docker version >/dev/null; fi && printf CONNECTION_OK";
+        if (UsesPasswordAuthentication(settings))
+        {
+            await passwordSshClient.ExecuteCommandAsync(
+                settings,
+                command,
+                progress,
+                cancellationToken);
+        }
+        else
+        {
+            await processRunner.RunAsync(
+                "ssh.exe",
+                BuildSshArguments(settings, command),
+                Environment.CurrentDirectory,
+                progress,
+                cancellationToken);
+        }
 
         progress.Report("连接测试成功。\r\n");
     }
@@ -54,6 +79,7 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
         try
         {
             progress.Report($"开始发布 {releaseId}。\r\n");
+            ReportMobileRelease(settings, progress);
             if (settings.RunLocalChecks)
             {
                 await RunLocalChecksAsync(settings, progress, cancellationToken);
@@ -88,6 +114,88 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
     }
 
     /// <summary>
+    /// 仅上传已经生成的安卓 APK 与版本清单到客户端容器挂载目录，不构建镜像也不重启 Docker 服务。
+    /// </summary>
+    public async Task<Uri> DeployMobileAsync(
+        DeploymentSettings settings,
+        IProgress<string> progress,
+        CancellationToken cancellationToken)
+    {
+        ValidateSettings(settings, requireProjectFiles: true);
+        var distributionDirectory = Path.Combine(
+            settings.ProjectRoot,
+            "src",
+            "Zero72.Blog.ClientHost",
+            "wwwroot",
+            "mobile");
+        var manifestPath = Path.Combine(distributionDirectory, "latest.json");
+        if (!File.Exists(manifestPath))
+        {
+            throw new InvalidOperationException("没有找到安卓升级清单，请先点击“生成升级 APK”。");
+        }
+
+        string versionName;
+        string apkFileName;
+        await using (var manifestStream = File.OpenRead(manifestPath))
+        {
+            using var manifest = await JsonDocument.ParseAsync(
+                manifestStream,
+                cancellationToken: cancellationToken);
+            versionName = manifest.RootElement.GetProperty("versionName").GetString() ?? string.Empty;
+            var downloadUrl = manifest.RootElement.GetProperty("downloadUrl").GetString() ?? string.Empty;
+            apkFileName = Path.GetFileName(downloadUrl);
+        }
+
+        if (!MobileVersionPattern().IsMatch(versionName) ||
+            !MobileFileNamePattern().IsMatch(apkFileName) ||
+            !apkFileName.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("安卓升级清单中的版本号或 APK 文件名无效。");
+        }
+
+        var apkPath = Path.Combine(distributionDirectory, apkFileName);
+        if (!File.Exists(apkPath))
+        {
+            throw new InvalidOperationException($"升级清单对应的 APK 不存在：{apkFileName}");
+        }
+
+        await using var apkStream = File.OpenRead(apkPath);
+        var apkHash = Convert.ToHexStringLower(
+            await SHA256.HashDataAsync(apkStream, cancellationToken));
+        progress.Report($"开始单独上传 Android {versionName}，不会构建或重启 Docker……");
+        await UploadFilesToTemporaryDirectoryAsync(
+            settings,
+            [apkPath, manifestPath],
+            progress,
+            cancellationToken);
+
+        var remoteMobileRoot = $"{settings.RemoteRoot}/app/deploy/runtime/mobile";
+        var remoteApk = $"/tmp/{apkFileName}";
+        var remoteManifest = "/tmp/latest.json";
+        var command = string.Join(
+            ' ',
+            "set -Eeuo pipefail;",
+            "privileged() { if [ \"$(id -u)\" = \"0\" ]; then \"$@\"; else sudo -n \"$@\"; fi; };",
+            $"privileged mkdir -p {remoteMobileRoot};",
+            $"privileged install -m 0644 {remoteApk} {remoteMobileRoot}/{apkFileName};",
+            $"privileged install -m 0644 {remoteManifest} {remoteMobileRoot}/latest.json.next;",
+            $"privileged mv -f {remoteMobileRoot}/latest.json.next {remoteMobileRoot}/latest.json;",
+            $"privileged find {remoteMobileRoot} -maxdepth 1 -type f -name 'Zero72.Blog.Mobile-*.apk' ! -name '{apkFileName}' -delete;",
+            $"actual_hash=$(privileged sha256sum {remoteMobileRoot}/{apkFileName} | awk '{{print $1}}');",
+            $"test \"$actual_hash\" = \"{apkHash}\";",
+            $"curl -fsSL --max-time 20 http://127.0.0.1:{settings.ClientPort}/mobile/latest.json | grep -Fq '{apkFileName}';",
+            $"curl -fsSI --max-time 20 http://127.0.0.1:{settings.ClientPort}/mobile/{apkFileName} >/dev/null;",
+            $"rm -f {remoteApk} {remoteManifest};",
+            "printf MOBILE_DEPLOYMENT_SUCCESS");
+        await ExecuteRemoteCommandAsync(settings, command, progress, cancellationToken);
+
+        var downloadUri = new Uri(
+            $"http://{settings.Host}:{settings.ClientPort}/mobile/{apkFileName}");
+        progress.Report($"\r\nAndroid {versionName} 已单独发布：{downloadUri}");
+        return downloadUri;
+    }
+
+    /// <summary>
     /// 校验路径、端口和远程标识，防止无效值或 shell 元字符进入部署命令。
     /// </summary>
     private static void ValidateSettings(DeploymentSettings settings, bool requireProjectFiles)
@@ -110,7 +218,12 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
             throw new InvalidOperationException("SSH 用户名只能包含字母、数字、点、下划线和短横线。");
         }
 
-        if (!File.Exists(settings.PrivateKeyPath))
+        if (UsesPasswordAuthentication(settings) && string.IsNullOrWhiteSpace(settings.Password))
+        {
+            throw new InvalidOperationException("请输入 SSH 登录密码；密码只在本次运行期间使用。");
+        }
+
+        if (!UsesPasswordAuthentication(settings) && !File.Exists(settings.PrivateKeyPath))
         {
             throw new InvalidOperationException("SSH 私钥文件不存在。");
         }
@@ -210,7 +323,26 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
     }
 
     /// <summary>
-    /// 通过 SCP 上传源码包和固定内容的部署脚本。
+    /// 在打包前说明本次是否包含安卓升级包，避免只生成 APK 却忘记将其发布到服务器。
+    /// </summary>
+    private static void ReportMobileRelease(
+        DeploymentSettings settings,
+        IProgress<string> progress)
+    {
+        var manifestPath = Path.Combine(
+            settings.ProjectRoot,
+            "src",
+            "Zero72.Blog.ClientHost",
+            "wwwroot",
+            "mobile",
+            "latest.json");
+        progress.Report(File.Exists(manifestPath)
+            ? "检测到安卓升级清单，本次将把最新 APK 一并发布。"
+            : "未检测到安卓升级清单，本次仅发布博客；如需发布 App 更新，请先点击“生成升级 APK”。");
+    }
+
+    /// <summary>
+    /// 按认证方式上传源码包和固定内容的部署脚本；密码模式使用可重试的 SSH 分块传输。
     /// </summary>
     private async Task UploadAsync(
         DeploymentSettings settings,
@@ -220,15 +352,69 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
         CancellationToken cancellationToken)
     {
         progress.Report("[3/5] 上传源码包和部署脚本");
-        var target = $"{settings.UserName}@{settings.Host}:/tmp/";
-        var arguments = BuildSshCommonArguments(settings, useUppercasePortOption: true);
-        arguments.Add(archivePath);
-        arguments.Add(scriptPath);
-        arguments.Add(target);
+        await UploadFilesToTemporaryDirectoryAsync(
+            settings,
+            [archivePath, scriptPath],
+            progress,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 根据当前认证方式将一组本地文件上传到服务器临时目录。
+    /// </summary>
+    private async Task UploadFilesToTemporaryDirectoryAsync(
+        DeploymentSettings settings,
+        IReadOnlyList<string> localPaths,
+        IProgress<string> progress,
+        CancellationToken cancellationToken)
+    {
+        if (UsesPasswordAuthentication(settings))
+        {
+            await passwordSshClient.UploadFilesAsync(
+                settings,
+                localPaths,
+                "/tmp",
+                progress,
+                cancellationToken);
+        }
+        else
+        {
+            var target = $"{settings.UserName}@{settings.Host}:/tmp/";
+            var arguments = BuildSshCommonArguments(settings, useUppercasePortOption: true);
+            arguments.AddRange(localPaths);
+            arguments.Add(target);
+
+            await processRunner.RunAsync(
+                "scp.exe",
+                arguments,
+                settings.ProjectRoot,
+                progress,
+                cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// 根据密码或私钥认证方式执行同一条远程命令。
+    /// </summary>
+    private async Task ExecuteRemoteCommandAsync(
+        DeploymentSettings settings,
+        string command,
+        IProgress<string> progress,
+        CancellationToken cancellationToken)
+    {
+        if (UsesPasswordAuthentication(settings))
+        {
+            await passwordSshClient.ExecuteCommandAsync(
+                settings,
+                command,
+                progress,
+                cancellationToken);
+            return;
+        }
 
         await processRunner.RunAsync(
-            "scp.exe",
-            arguments,
+            "ssh.exe",
+            BuildSshArguments(settings, command),
             settings.ProjectRoot,
             progress,
             cancellationToken);
@@ -261,13 +447,32 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
             settings.AdminPort.ToString(CultureInfo.InvariantCulture),
             noCache);
 
-        await processRunner.RunAsync(
-            "ssh.exe",
-            BuildSshArguments(settings, command),
-            settings.ProjectRoot,
-            progress,
-            cancellationToken);
+        if (UsesPasswordAuthentication(settings))
+        {
+            await passwordSshClient.ExecuteCommandAsync(
+                settings,
+                command,
+                progress,
+                cancellationToken);
+        }
+        else
+        {
+            await processRunner.RunAsync(
+                "ssh.exe",
+                BuildSshArguments(settings, command),
+                settings.ProjectRoot,
+                progress,
+                cancellationToken);
+        }
         progress.Report("[5/5] 健康检查通过，服务器已完成清理");
+    }
+
+    /// <summary>
+    /// 判断当前配置是否使用不会持久化的登录密码认证。
+    /// </summary>
+    private static bool UsesPasswordAuthentication(DeploymentSettings settings)
+    {
+        return settings.AuthenticationMode == SshAuthenticationMode.Password;
     }
 
     /// <summary>
@@ -343,6 +548,18 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
     [GeneratedRegex(@"^/[A-Za-z0-9._/-]+$", RegexOptions.CultureInvariant)]
     private static partial Regex RemotePathPattern();
 
+    /// <summary>
+    /// 匹配升级清单中允许的安卓版本文本。
+    /// </summary>
+    [GeneratedRegex(@"^[0-9A-Za-z._-]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex MobileVersionPattern();
+
+    /// <summary>
+    /// 匹配不包含目录和 Shell 元字符的安卓升级文件名。
+    /// </summary>
+    [GeneratedRegex(@"^[0-9A-Za-z._-]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex MobileFileNamePattern();
+
     private const string RemoteDeploymentScript = """
         #!/usr/bin/env bash
         set -Eeuo pipefail
@@ -366,15 +583,23 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
         current_moved=0
         new_activated=0
 
+        docker_cmd() {
+          if [ "$(id -u)" = "0" ]; then
+            docker "$@"
+          else
+            sudo -n docker "$@"
+          fi
+        }
+
         compose() {
-          sudo -n docker compose -p "$project_name" --env-file .env -f "$compose_file" "$@"
+          docker_cmd compose -p "$project_name" --env-file .env -f "$compose_file" "$@"
         }
 
         restore_previous_images() {
           for service in api client admin; do
             rollback_image="$project_name-$service:rollback-$release_id"
-            if sudo -n docker image inspect "$rollback_image" >/dev/null 2>&1; then
-              sudo -n docker tag "$rollback_image" "$project_name-$service:latest"
+            if docker_cmd image inspect "$rollback_image" >/dev/null 2>&1; then
+              docker_cmd tag "$rollback_image" "$project_name-$service:latest"
             fi
           done
         }
@@ -419,10 +644,18 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
           cp -a "$current/deploy/runtime/." "$staging/deploy/runtime/"
         fi
 
+        mkdir -p "$staging/deploy/runtime/mobile"
+        find "$staging/deploy/runtime/mobile" -maxdepth 1 -type f \
+          -name 'Zero72.Blog.Mobile-*.apk' -delete
+        if [ -d "$staging/src/Zero72.Blog.ClientHost/wwwroot/mobile" ]; then
+          cp -a "$staging/src/Zero72.Blog.ClientHost/wwwroot/mobile/." \
+            "$staging/deploy/runtime/mobile/"
+        fi
+
         for service in api client admin; do
           image="$project_name-$service:latest"
-          if sudo -n docker image inspect "$image" >/dev/null 2>&1; then
-            sudo -n docker tag "$image" "$project_name-$service:rollback-$release_id"
+          if docker_cmd image inspect "$image" >/dev/null 2>&1; then
+            docker_cmd tag "$image" "$project_name-$service:rollback-$release_id"
           fi
         done
 
@@ -434,7 +667,7 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
           compose build api client admin
         fi
 
-        sudo -n docker run --rm --entrypoint /bin/sh "$project_name-client:latest" \
+        docker_cmd run --rm --entrypoint /bin/sh "$project_name-client:latest" \
           -c "test -f /app/wwwroot/css/app.css && test -f /app/wwwroot/_framework/blazor.web.js"
 
         tar -czf "$backup" -C "$current" .
@@ -466,7 +699,7 @@ public sealed partial class DeploymentService(ProcessRunner processRunner)
         wait_for_url "http://127.0.0.1:$client_port/_framework/blazor.web.js" "交互脚本"
         wait_for_url "http://127.0.0.1:$admin_port/" "管理后台"
 
-        test "$(sudo -n docker inspect --format='{{.RestartCount}}' "$project_name-client-1")" = "0"
+        test "$(docker_cmd inspect --format='{{.RestartCount}}' "$project_name-client-1")" = "0"
         compose ps
         rm -f "$archive" "$0"
         trap - ERR HUP INT TERM

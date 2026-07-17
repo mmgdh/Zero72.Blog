@@ -1,88 +1,52 @@
 @rendermode InteractiveServer
 
 <header class="navbar">
-    <div class="navbar-title">
-        <NavLink class="navbar-title-link" href="/blog" Match="NavLinkMatch.All">
-            <span class="navbar-logo">Z</span>
-            <span class="site-name">Zero72 博客</span>
+    <div class="navbar-inner">
+        <NavLink class="brand" href="/blog" Match="NavLinkMatch.Prefix" @onclick="CloseMenu">
+            <span class="brand-mark">72</span>
+            <span class="brand-copy">
+                <strong>Zero72</strong>
+                <small>技术与思考</small>
+            </span>
         </NavLink>
-    </div>
 
-    <div class="navbar-container">
-        <section class="navbar-section navbar-section-search">
-            <input class="searchbar with-icon" placeholder="搜索" aria-label="搜索" />
-        </section>
+        <nav class="nav-links @NavMenuCssClass" aria-label="主导航">
+            <NavLink href="/blog" Match="NavLinkMatch.Prefix" @onclick="CloseMenu">文章</NavLink>
+            <NavLink href="/projects" @onclick="CloseMenu">项目</NavLink>
+            <NavLink href="/notes" @onclick="CloseMenu">思考</NavLink>
+            <NavLink href="/reading" @onclick="CloseMenu">阅读记录</NavLink>
+            <NavLink href="/books" @onclick="CloseMenu">书架</NavLink>
+            <a href="https://github.com/mmgdh" target="_blank" rel="noreferrer" @onclick="CloseMenu">关于</a>
+        </nav>
 
-        <section class="navbar-section">
-            <button type="button" title="导航菜单" class="@NavButtonCssClass" @onclick="ToggleNavMenu">
-                <span class="menu-line"></span>
-                <span class="menu-line"></span>
-                <span class="menu-line"></span>
+        <div class="nav-actions">
+            <button class="theme-button" type="button" aria-label="切换明暗主题"
+                    title="切换明暗主题" onclick="window.zero72Theme?.toggle()">
+                <span class="theme-glyph" aria-hidden="true"></span>
             </button>
-
-            <nav class="@NavMenuCssClass">
-                <NavLink href="/blog" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
-                    <span class="nav-image">B</span>
-                    博客
-                </NavLink>
-                <NavLink href="/notes" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
-                    <span class="nav-image">N</span>
-                    思考记录
-                </NavLink>
-                <NavLink href="/projects" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
-                    <span class="nav-image">P</span>
-                    项目
-                </NavLink>
-                <NavLink href="/reading" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
-                    <span class="nav-image">R</span>
-                    阅读记录
-                </NavLink>
-                <NavLink href="/books" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
-                    <span class="nav-image">K</span>
-                    已读图书
-                </NavLink>
-                <a href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer" @onclick="CloseNavMenu">
-                    <span class="nav-image">A</span>
-                    关于我
-                </a>
-            </nav>
-
-            <nav class="navbar-menu social">
-                <button class="navbar-button" type="button" title="切换主题" onclick="zero72Theme.toggle()">
-                    <span class="theme-glyph"></span>
-                </button>
-                <button class="navbar-button" type="button" title="切换强调色" onclick="zero72Theme.toggleColor()">
-                    <span class="color-dot"></span>
-                </button>
-            </nav>
-        </section>
+            <button class="menu-button" type="button" aria-label="打开或关闭导航"
+                    aria-expanded="@_menuOpen" @onclick="ToggleMenu">
+                <span></span>
+                <span></span>
+            </button>
+        </div>
     </div>
 </header>
 
 @code {
-    private bool collapseNavMenu = true;
+    private bool _menuOpen;
 
-    private string NavButtonCssClass => collapseNavMenu
-        ? "navbar-button nav-menu-button"
-        : "navbar-button nav-menu-button active";
+    private string NavMenuCssClass => _menuOpen ? "is-open" : string.Empty;
 
-    private string NavMenuCssClass => collapseNavMenu
-        ? "navbar-menu nav-items"
-        : "navbar-menu nav-items active";
-
-    /// <summary>
-    /// 切换移动端导航菜单的展开状态。
-    /// </summary>
-    private void ToggleNavMenu()
+    /// <summary>切换移动端导航菜单的显示状态。</summary>
+    private void ToggleMenu()
     {
-        collapseNavMenu = !collapseNavMenu;
+        _menuOpen = !_menuOpen;
     }
 
-    /// <summary>
-    /// 在完成导航后收起移动端菜单。
-    /// </summary>
-    private void CloseNavMenu()
+    /// <summary>用户完成导航后关闭移动端菜单。</summary>
+    private void CloseMenu()
     {
-        collapseNavMenu = true;
+        _menuOpen = false;
     }
 }

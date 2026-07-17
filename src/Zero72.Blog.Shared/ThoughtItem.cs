@@ -9,4 +9,5 @@ public sealed record ThoughtItem(
     DateTimeOffset OccurredAt,
     string? ImageUrl,
     bool IsPublished,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string[] Tags);

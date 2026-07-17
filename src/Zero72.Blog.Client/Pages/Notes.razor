@@ -1,16 +1,15 @@
 @page "/notes"
+@rendermode InteractiveServer
 @inject HttpClient Http
 
 <PageTitle>思考记录 - Zero72 博客</PageTitle>
 
 <main class="main-content page">
-    <section class="section-index">
-        <header class="heading">
-            <h2>
-                <span class="heading-icon">N</span>
-                <span>思考记录</span>
-            </h2>
-            <div class="description">生活、项目、学习，以及那些暂时不需要展开成长文的想法。</div>
+    <section>
+        <header class="page-header notes-header">
+            <span class="eyebrow">Notes &amp; thoughts</span>
+            <h1>思考记录</h1>
+            <p>生活、项目、学习，以及那些暂时不需要展开成长文的想法。</p>
         </header>
 
         @if (thoughts is null)
@@ -27,11 +26,39 @@
         }
         else
         {
+            @if (TagSummaries.Count > 0)
+            {
+                <nav class="tag-filter" aria-label="按感悟标签筛选">
+                    <button type="button" class="@(selectedTag is null ? "active" : null)"
+                            aria-pressed="@(selectedTag is null)" @onclick="() => SelectTag(null)">
+                        <span>全部</span><small>@thoughts.Count</small>
+                    </button>
+                    @foreach (var tag in TagSummaries)
+                    {
+                        <button type="button" class="@(IsTagSelected(tag.Tag) ? "active" : null)"
+                                aria-pressed="@IsTagSelected(tag.Tag)" @onclick="() => SelectTag(tag.Tag)">
+                            <span># @tag.Tag</span><small>@tag.Count</small>
+                        </button>
+                    }
+                </nav>
+            }
+
             <div class="thought-timeline">
-                @foreach (var thought in thoughts)
+                @foreach (var thought in FilteredThoughts)
                 {
                     <article class="thought-card">
-                        <time datetime="@FormatMachineDate(thought.OccurredAt)">@FormatDisplayDate(thought.OccurredAt)</time>
+                        <header class="thought-meta">
+                            <time datetime="@FormatMachineDate(thought.OccurredAt)">@FormatDisplayDate(thought.OccurredAt)</time>
+                            @if (GetTags(thought).Length > 0)
+                            {
+                                <div class="thought-tags" aria-label="感悟标签">
+                                    @foreach (var tag in GetTags(thought))
+                                    {
+                                        <button type="button" @onclick="() => SelectTag(tag)">#@tag</button>
+                                    }
+                                </div>
+                            }
+                        </header>
                         <p>@thought.Content</p>
                         @if (!string.IsNullOrWhiteSpace(thought.ImageUrl))
                         {
@@ -47,8 +74,21 @@
 @code {
     private List<ThoughtItem>? thoughts;
     private string? errorMessage;
+    private string? selectedTag;
 
-    // 从公开接口加载已经发布的思考记录。
+    private IEnumerable<ThoughtItem> FilteredThoughts => selectedTag is null
+        ? thoughts ?? []
+        : (thoughts ?? []).Where(thought => GetTags(thought).Contains(selectedTag, StringComparer.OrdinalIgnoreCase));
+
+    private IReadOnlyList<(string Tag, int Count)> TagSummaries => (thoughts ?? [])
+        .SelectMany(GetTags)
+        .GroupBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+        .Select(group => (group.First(), group.Count()))
+        .OrderByDescending(item => item.Item2)
+        .ThenBy(item => item.Item1, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    /// <summary>从公开接口加载已经发布的思考记录。</summary>
     protected override async Task OnInitializedAsync()
     {
         try
@@ -62,15 +102,33 @@
         }
     }
 
-    // 将发生时间格式化为适合时间线阅读的本地日期。
+    /// <summary>将发生时间格式化为适合时间线阅读的本地日期。</summary>
     private static string FormatDisplayDate(DateTimeOffset occurredAt)
     {
         return occurredAt.ToLocalTime().ToString("yyyy年MM月dd日 HH:mm");
     }
 
-    // 输出供 time 元素使用的机器可读时间。
+    /// <summary>输出供 time 元素使用的机器可读时间。</summary>
     private static string FormatMachineDate(DateTimeOffset occurredAt)
     {
         return occurredAt.ToString("O");
+    }
+
+    /// <summary>安全读取标签并兼容尚未升级接口时缺少标签字段的响应。</summary>
+    private static string[] GetTags(ThoughtItem thought)
+    {
+        return thought.Tags ?? [];
+    }
+
+    /// <summary>切换当前感悟分类；再次点击已选标签时返回全部记录。</summary>
+    private void SelectTag(string? tag)
+    {
+        selectedTag = tag is not null && IsTagSelected(tag) ? null : tag;
+    }
+
+    /// <summary>按不区分大小写方式判断指定标签是否已选中。</summary>
+    private bool IsTagSelected(string tag)
+    {
+        return string.Equals(selectedTag, tag, StringComparison.OrdinalIgnoreCase);
     }
 }

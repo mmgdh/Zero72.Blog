@@ -6,29 +6,27 @@
 <main class="main-content page">
     <header class="hero hero-index">
         <div class="hero-wrapper">
-            <div>
-                <h1>你好，我是 Zero72！</h1>
-                <p class="hero-description">
-                    我是一名使用 .NET、Blazor、PostgreSQL 和 Docker 构建应用的全栈开发者。
-                    这里记录代码笔记、架构实验和排错故事。
-                </p>
-                <p class="hero-description">
-                    这里的每一篇内容，都来自真实项目中的实践。
-                </p>
-                <p class="large-links">
-                    <a class="large-link" href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer">关于我</a>
-                    <a class="large-link" href="#posts">最新文章</a>
-                </p>
+            <span class="eyebrow">Zero72 · Digital Garden</span>
+            <h1>把复杂技术，<br />写成清晰答案。</h1>
+            <p class="hero-description">
+                我是林庆汉，一名专注 .NET 与现代 Web 的开发者。这里沉淀真实项目中的工程实践、排错过程和长期思考。
+            </p>
+            <p class="large-links">
+                <a class="large-link" href="#posts">阅读最新文章</a>
+                <a class="large-link" href="https://github.com/mmgdh" target="_blank" rel="noopener noreferrer">在 GitHub 找到我</a>
+            </p>
+            <div class="hero-tags" aria-label="关注领域">
+                <span>.NET</span><span>Blazor</span><span>PostgreSQL</span><span>Docker</span>
             </div>
-            <div class="hero-image-container">
+        </div>
+        <div class="hero-image-container">
             <img src="img/author-cover.jpg"
                  class="hero-image"
-                 alt="Zero72"
+                 alt="Zero72 的个人照片"
                  width="1280"
                  height="720"
                  decoding="async"
                  fetchpriority="high" />
-            </div>
         </div>
     </header>
 
@@ -51,18 +49,21 @@
 
         <section class="section-index" id="posts">
             <header class="heading">
-                <h2>
-                    <span class="heading-icon">B</span>
-                    <span>博客</span>
-                </h2>
-                <div class="description">指南、参考资料和实践教程。</div>
+                <div>
+                    <span class="section-kicker">Latest writing</span>
+                    <h2>最新文章</h2>
+                </div>
+                <div class="description">工程实践、问题拆解与技术笔记</div>
             </header>
             <div class="posts">
                 @foreach (var post in latestArticles)
                 {
                     <NavLink class="post" href="@GetPostUrl(post)">
+                        <div>
+                            <h3>@post.Title</h3>
+                            <p>阅读这篇文章</p>
+                        </div>
                         <time datetime="@FormatMachineDate(post.PublishedAt)">@FormatDisplayDate(post.PublishedAt)</time>
-                        <div>@post.Title</div>
                     </NavLink>
                 }
             </div>
@@ -70,17 +71,19 @@
 
         <section class="section-index">
             <header class="heading">
-                <h2>
-                    <span>深度文章</span>
-                </h2>
-                <div class="description">长文记录和聚焦开发主题的整理。</div>
+                <div>
+                    <span class="section-kicker">Explore more</span>
+                    <h2>继续探索</h2>
+                </div>
+                <div class="description">更多值得慢慢阅读的内容</div>
             </header>
             <div class="cards">
                 @foreach (var post in highlightPosts)
                 {
-                    <NavLink class="card card-highlight" href="@GetPostUrl(post)">
-                        <span class="card-thumb">@GetInitial(post.Title)</span>
-                        <div>@post.Title</div>
+                    <NavLink class="card article-card" href="@GetPostUrl(post)">
+                        <span class="article-initial">@GetInitial(post.Title)</span>
+                        <h3>@post.Title</h3>
+                        <span class="article-meta">@FormatDisplayDate(post.PublishedAt) · 查看文章 →</span>
                     </NavLink>
                 }
             </div>
@@ -92,6 +95,7 @@
     private List<BlogPostSummary>? posts;
     private string? errorMessage;
 
+    /// <summary>加载公开发布的博客文章列表。</summary>
     protected override async Task OnInitializedAsync()
     {
         try
@@ -105,21 +109,25 @@
         }
     }
 
+    /// <summary>生成文章详情页地址。</summary>
     private static string GetPostUrl(BlogPostSummary post)
     {
         return $"/posts/{post.Slug}";
     }
 
+    /// <summary>将发布时间转换为界面使用的日期。</summary>
     private static string FormatDisplayDate(DateTimeOffset? publishedAt)
     {
         return publishedAt?.ToLocalTime().ToString("MM月dd日") ?? "草稿";
     }
 
+    /// <summary>将发布时间转换为机器可读日期。</summary>
     private static string FormatMachineDate(DateTimeOffset? publishedAt)
     {
         return publishedAt?.ToString("yyyy-MM-dd") ?? string.Empty;
     }
 
+    /// <summary>提取文章标题首字符作为视觉标识。</summary>
     private static string GetInitial(string value)
     {
         return string.IsNullOrWhiteSpace(value) ? "Z" : value.Trim()[0].ToString().ToUpperInvariant();

@@ -28,7 +28,7 @@
                 </label>
                 @if (!string.IsNullOrWhiteSpace(coverImageUrl))
                 {
-                    <div class="image-preview"><img src="@Api.ToPublicUrl(coverImageUrl)" alt="封面预览" /><button class="text-button danger-text" @onclick="RemoveCover">移除封面</button></div>
+                    <div class="image-preview"><RemoteImage ImagePath="@coverImageUrl" Alt="封面预览" Lazy="false" /><button class="text-button danger-text" @onclick="RemoveCover">移除封面</button></div>
                 }
                 <div class="button-row">
                     <button class="primary" disabled="@isSaving" @onclick="SaveAsync">@(isSaving ? "正在保存…" : "保存书籍")</button>
@@ -55,7 +55,9 @@
                     <div class="book-cover" style="--book-tone:@book.CoverTone">
                         @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
                         {
-                            <img src="@Api.ToPublicUrl(book.CoverImageUrl)" alt="@book.Title 封面" />
+                            <RemoteImage ImagePath="@book.CoverImageUrl" Alt="@($"{book.Title} 封面")">
+                                <Fallback><span>@book.Title.FirstOrDefault()</span></Fallback>
+                            </RemoteImage>
                         }
                         else
                         {

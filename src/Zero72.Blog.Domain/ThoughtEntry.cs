@@ -26,6 +26,11 @@ public sealed class ThoughtEntry
     public string? ImageUrl { get; set; }
 
     /// <summary>
+    /// 获取或设置用于分类感悟的自定义标签。
+    /// </summary>
+    public string[] Tags { get; set; } = [];
+
+    /// <summary>
     /// 获取或设置是否允许在公开博客展示。
     /// </summary>
     public bool IsPublished { get; set; }

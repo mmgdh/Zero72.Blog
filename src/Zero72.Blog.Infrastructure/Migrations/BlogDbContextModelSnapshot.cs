@@ -78,6 +78,10 @@ partial class BlogDbContextModelSnapshot : ModelSnapshot
             entity.Property<DateTimeOffset>("OccurredAt")
                 .HasColumnType("timestamp with time zone");
 
+            entity.Property<string[]>("Tags")
+                .IsRequired()
+                .HasColumnType("text[]");
+
             entity.Property<DateTimeOffset>("UpdatedAt")
                 .HasColumnType("timestamp with time zone");
 

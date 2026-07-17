@@ -4,7 +4,7 @@ using Zero72.Blog.Deployer.Models;
 namespace Zero72.Blog.Deployer.Services;
 
 /// <summary>
-/// 在当前 Windows 用户的本地应用数据目录中读取和保存发布工具配置。
+/// 在当前 Windows 用户的本地应用数据目录中读取和保存发布工具的非敏感配置。
 /// </summary>
 public sealed class SettingsStore
 {

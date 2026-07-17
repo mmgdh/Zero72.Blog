@@ -7,4 +7,5 @@ public sealed record SaveThoughtRequest(
     string Content,
     DateTimeOffset OccurredAt,
     string? ImageUrl,
-    bool IsPublished);
+    bool IsPublished,
+    string[]? Tags = null);

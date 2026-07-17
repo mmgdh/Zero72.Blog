@@ -370,3 +370,7 @@ FodyWeavers.xsd
 # Production runtime files
 .env
 deploy/runtime/
+
+# Generated Android remote-update packages
+src/Zero72.Blog.ClientHost/wwwroot/mobile/*.apk
+src/Zero72.Blog.ClientHost/wwwroot/mobile/latest.json

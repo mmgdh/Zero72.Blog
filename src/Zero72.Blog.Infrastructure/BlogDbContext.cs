@@ -73,6 +73,7 @@ public sealed class BlogDbContext(DbContextOptions<BlogDbContext> options) : DbC
             entity.Property(item => item.Content).HasMaxLength(2000).IsRequired();
             entity.Property(item => item.OccurredAt).IsRequired();
             entity.Property(item => item.ImageUrl).HasMaxLength(500);
+            entity.Property(item => item.Tags).HasColumnType("text[]").IsRequired();
             entity.Property(item => item.IsPublished).IsRequired();
             entity.Property(item => item.CreatedAt).IsRequired();
             entity.Property(item => item.UpdatedAt).IsRequired();

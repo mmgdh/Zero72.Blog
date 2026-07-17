@@ -11,10 +11,13 @@ public sealed class MainForm : Form
 {
     private readonly SettingsStore settingsStore = new();
     private readonly DeploymentService deploymentService = new(new ProcessRunner());
+    private readonly AndroidBuildService androidBuildService = new(new ProcessRunner());
     private readonly TextBox projectRootTextBox = new();
     private readonly TextBox hostTextBox = new();
     private readonly TextBox userNameTextBox = new();
     private readonly NumericUpDown sshPortInput = CreatePortInput(22);
+    private readonly ComboBox authenticationModeComboBox = new();
+    private readonly TextBox passwordTextBox = new();
     private readonly TextBox privateKeyTextBox = new();
     private readonly TextBox remoteRootTextBox = new();
     private readonly TextBox composeProjectTextBox = new();
@@ -24,11 +27,14 @@ public sealed class MainForm : Form
     private readonly CheckBox noCacheCheckBox = new();
     private readonly Button testConnectionButton = new();
     private readonly Button deployButton = new();
+    private readonly Button buildAndroidButton = new();
+    private readonly Button uploadAndroidButton = new();
     private readonly Button cancelButton = new();
     private readonly Button openBlogButton = new();
     private readonly Button openAdminButton = new();
     private readonly RichTextBox logTextBox = new();
     private readonly ProgressBar progressBar = new();
+    private Control privateKeyEditor = null!;
     private CancellationTokenSource? operationCancellation;
     private DeploymentResult? lastDeployment;
 
@@ -51,7 +57,7 @@ public sealed class MainForm : Form
         {
             var settings = await settingsStore.LoadAsync();
             ApplySettings(settings);
-            AppendLog("配置已加载。发布前请确认项目目录和私钥路径。\r\n");
+            AppendLog("配置已加载。请选择密码或私钥认证；登录密码不会保存。\r\n");
         }
         catch (Exception exception)
         {
@@ -156,7 +162,7 @@ public sealed class MainForm : Form
             BackColor = Color.White,
             Padding = new Padding(14),
             ColumnCount = 4,
-            RowCount = 6,
+            RowCount = 7,
             Margin = new Padding(0)
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100F));
@@ -168,11 +174,20 @@ public sealed class MainForm : Form
         AddField(panel, 1, 0, "服务器", hostTextBox);
         AddField(panel, 1, 2, "SSH 用户", userNameTextBox);
         AddField(panel, 2, 0, "SSH 端口", sshPortInput);
-        AddPathField(panel, 2, 2, "私钥路径", privateKeyTextBox, OnBrowsePrivateKey);
-        AddField(panel, 3, 0, "远程目录", remoteRootTextBox);
-        AddField(panel, 3, 2, "Compose 名", composeProjectTextBox);
-        AddField(panel, 4, 0, "博客端口", clientPortInput);
-        AddField(panel, 4, 2, "后台端口", adminPortInput);
+        ConfigureAuthenticationModeComboBox();
+        AddField(panel, 2, 2, "认证方式", authenticationModeComboBox);
+
+        passwordTextBox.UseSystemPasswordChar = true;
+        passwordTextBox.PlaceholderText = "仅保存在当前运行内存中";
+        AddField(panel, 3, 0, "登录密码", passwordTextBox);
+        panel.Controls.Add(CreateFieldLabel("私钥路径"), 2, 3);
+        privateKeyEditor = CreatePathEditor(privateKeyTextBox, "选择…", OnBrowsePrivateKey);
+        panel.Controls.Add(privateKeyEditor, 3, 3);
+
+        AddField(panel, 4, 0, "远程目录", remoteRootTextBox);
+        AddField(panel, 4, 2, "Compose 名", composeProjectTextBox);
+        AddField(panel, 5, 0, "博客端口", clientPortInput);
+        AddField(panel, 5, 2, "后台端口", adminPortInput);
 
         localChecksCheckBox.Text = "发布前执行本地格式与测试检查";
         localChecksCheckBox.AutoSize = true;
@@ -180,9 +195,21 @@ public sealed class MainForm : Form
         noCacheCheckBox.Text = "远程 Docker 禁用缓存（更慢）";
         noCacheCheckBox.AutoSize = true;
         noCacheCheckBox.Margin = new Padding(3, 10, 3, 4);
-        panel.Controls.Add(localChecksCheckBox, 1, 5);
-        panel.Controls.Add(noCacheCheckBox, 3, 5);
+        panel.Controls.Add(localChecksCheckBox, 1, 6);
+        panel.Controls.Add(noCacheCheckBox, 3, 6);
+        authenticationModeComboBox.SelectedIndex = 0;
+        UpdateAuthenticationFields();
         return panel;
+    }
+
+    /// <summary>
+    /// 配置只允许选择预定义值的 SSH 认证方式下拉框。
+    /// </summary>
+    private void ConfigureAuthenticationModeComboBox()
+    {
+        authenticationModeComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        authenticationModeComboBox.Items.AddRange(["登录密码", "SSH 私钥"]);
+        authenticationModeComboBox.SelectedIndexChanged += OnAuthenticationModeChanged;
     }
 
     /// <summary>
@@ -195,7 +222,7 @@ public sealed class MainForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Margin = new Padding(0, 14, 0, 0)
         };
 
@@ -205,6 +232,12 @@ public sealed class MainForm : Form
 
         ConfigureButton(deployButton, "开始一键发布", Color.FromArgb(24, 76, 150), Color.White);
         deployButton.Click += OnDeploy;
+
+        ConfigureButton(buildAndroidButton, "生成升级 APK", Color.FromArgb(15, 118, 110), Color.White);
+        buildAndroidButton.Click += OnBuildAndroid;
+
+        ConfigureButton(uploadAndroidButton, "仅上传安卓", Color.FromArgb(3, 105, 161), Color.White);
+        uploadAndroidButton.Click += OnUploadAndroid;
 
         ConfigureButton(cancelButton, "取消", Color.FromArgb(230, 82, 82), Color.White);
         cancelButton.Enabled = false;
@@ -222,6 +255,8 @@ public sealed class MainForm : Form
         [
             testConnectionButton,
             deployButton,
+            buildAndroidButton,
+            uploadAndroidButton,
             cancelButton,
             openBlogButton,
             openAdminButton
@@ -377,6 +412,10 @@ public sealed class MainForm : Form
         hostTextBox.Text = settings.Host;
         userNameTextBox.Text = settings.UserName;
         sshPortInput.Value = ClampPort(settings.Port);
+        authenticationModeComboBox.SelectedIndex = settings.AuthenticationMode == SshAuthenticationMode.Password
+            ? 0
+            : 1;
+        passwordTextBox.Clear();
         privateKeyTextBox.Text = settings.PrivateKeyPath;
         remoteRootTextBox.Text = settings.RemoteRoot;
         composeProjectTextBox.Text = settings.ComposeProjectName;
@@ -384,6 +423,7 @@ public sealed class MainForm : Form
         adminPortInput.Value = ClampPort(settings.AdminPort);
         localChecksCheckBox.Checked = settings.RunLocalChecks;
         noCacheCheckBox.Checked = settings.NoCache;
+        UpdateAuthenticationFields();
     }
 
     /// <summary>
@@ -405,6 +445,10 @@ public sealed class MainForm : Form
             Host = hostTextBox.Text.Trim(),
             UserName = userNameTextBox.Text.Trim(),
             Port = decimal.ToInt32(sshPortInput.Value),
+            AuthenticationMode = authenticationModeComboBox.SelectedIndex == 1
+                ? SshAuthenticationMode.PrivateKey
+                : SshAuthenticationMode.Password,
+            Password = passwordTextBox.Text,
             PrivateKeyPath = privateKeyTextBox.Text.Trim(),
             RemoteRoot = remoteRootTextBox.Text.Trim().TrimEnd('/'),
             ComposeProjectName = composeProjectTextBox.Text.Trim(),
@@ -413,6 +457,27 @@ public sealed class MainForm : Form
             RunLocalChecks = localChecksCheckBox.Checked,
             NoCache = noCacheCheckBox.Checked
         };
+    }
+
+    /// <summary>
+    /// 在认证方式变化时只启用当前需要的敏感信息输入控件。
+    /// </summary>
+    private void OnAuthenticationModeChanged(object? sender, EventArgs e)
+    {
+        UpdateAuthenticationFields();
+    }
+
+    /// <summary>
+    /// 根据认证方式切换密码框和私钥路径编辑器的可用状态。
+    /// </summary>
+    private void UpdateAuthenticationFields()
+    {
+        var usePassword = authenticationModeComboBox.SelectedIndex != 1;
+        passwordTextBox.Enabled = usePassword;
+        if (privateKeyEditor is not null)
+        {
+            privateKeyEditor.Enabled = !usePassword;
+        }
     }
 
     /// <summary>
@@ -471,7 +536,7 @@ public sealed class MainForm : Form
     {
         var confirmation = MessageBox.Show(
             this,
-            "将更新服务器上的 API、公开博客和管理后台容器。PostgreSQL 数据卷不会删除；失败时会自动回滚。是否继续？",
+            "将使用当前填写的管理员账号更新 API、公开博客和管理后台容器。PostgreSQL 数据卷不会删除；失败时会自动回滚。是否继续？",
             "确认发布",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Question,
@@ -483,6 +548,67 @@ public sealed class MainForm : Form
 
         await RunOperationAsync(async (settings, progress, cancellationToken) =>
             await deploymentService.DeployAsync(settings, progress, cancellationToken));
+    }
+
+    /// <summary>
+    /// 调用仓库构建脚本生成递增版本的 APK，并准备服务器远程升级清单。
+    /// </summary>
+    private async void OnBuildAndroid(object? sender, EventArgs e)
+    {
+        string? apkPath = null;
+        var succeeded = await RunOperationAsync(async (settings, progress, cancellationToken) =>
+        {
+            apkPath = await androidBuildService.BuildAsync(settings, progress, cancellationToken);
+            return null;
+        });
+
+        if (succeeded && apkPath is not null)
+        {
+            MessageBox.Show(
+                this,
+                $"安卓升级包已生成：\r\n{apkPath}\r\n\r\n请点击“仅上传安卓”，无需重新发布 Docker。",
+                "APK 生成完成",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+    }
+
+    /// <summary>
+    /// 将当前升级清单及对应 APK 单独上传到服务器，不触发 Docker 构建或服务重启。
+    /// </summary>
+    private async void OnUploadAndroid(object? sender, EventArgs e)
+    {
+        var confirmation = MessageBox.Show(
+            this,
+            "将只上传当前已生成的安卓 APK 和版本清单，不会重建或重启 Docker。是否继续？",
+            "确认上传安卓更新",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button1);
+        if (confirmation != DialogResult.Yes)
+        {
+            return;
+        }
+
+        Uri? downloadUri = null;
+        var succeeded = await RunOperationAsync(async (settings, progress, cancellationToken) =>
+        {
+            downloadUri = await deploymentService.DeployMobileAsync(
+                settings,
+                progress,
+                cancellationToken);
+            return null;
+        });
+
+        if (succeeded && downloadUri is not null)
+        {
+            MessageBox.Show(
+                this,
+                $"安卓更新已单独发布。\r\n下载地址：{downloadUri}",
+                "安卓发布完成",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
     }
 
     /// <summary>
@@ -520,12 +646,12 @@ public sealed class MainForm : Form
     /// <summary>
     /// 统一运行连接或部署操作，负责保存配置、切换忙碌状态及显示异常。
     /// </summary>
-    private async Task RunOperationAsync(
+    private async Task<bool> RunOperationAsync(
         Func<DeploymentSettings, IProgress<string>, CancellationToken, Task<DeploymentResult?>> operation)
     {
         if (operationCancellation is not null)
         {
-            return;
+            return false;
         }
 
         var settings = ReadSettings();
@@ -548,15 +674,19 @@ public sealed class MainForm : Form
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
+
+            return true;
         }
         catch (OperationCanceledException)
         {
             AppendLog("操作已取消。\r\n");
+            return false;
         }
         catch (Exception exception)
         {
             AppendLog($"错误：{exception.Message}\r\n");
             ShowError("操作失败", exception);
+            return false;
         }
         finally
         {
@@ -592,6 +722,8 @@ public sealed class MainForm : Form
     {
         testConnectionButton.Enabled = !isBusy;
         deployButton.Enabled = !isBusy;
+        buildAndroidButton.Enabled = !isBusy;
+        uploadAndroidButton.Enabled = !isBusy;
         cancelButton.Enabled = isBusy;
         progressBar.MarqueeAnimationSpeed = isBusy ? 28 : 0;
     }

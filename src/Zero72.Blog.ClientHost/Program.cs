@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.FileProviders;
 using Zero72.Blog.ClientHost.Components;
 
 var appRoot = AppContext.BaseDirectory;
 var webRoot = Path.Combine(appRoot, "wwwroot");
+var mobileRoot = Path.Combine(webRoot, "mobile");
+Directory.CreateDirectory(mobileRoot);
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
@@ -43,6 +46,7 @@ contentTypeProvider.Mappings[".dat"] = "application/octet-stream";
 contentTypeProvider.Mappings[".dll"] = "application/octet-stream";
 contentTypeProvider.Mappings[".pdb"] = "application/octet-stream";
 contentTypeProvider.Mappings[".wasm"] = "application/wasm";
+contentTypeProvider.Mappings[".apk"] = "application/vnd.android.package-archive";
 
 app.Use(async (context, next) =>
 {
@@ -50,7 +54,16 @@ app.Use(async (context, next) =>
     {
         ApplySecurityHeaders(context.Response);
 
-        if (ShouldAvoidCache(context.Request.Path))
+        if ((context.Request.Path.Value ?? string.Empty).EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.ContentType = "application/vnd.android.package-archive";
+        }
+
+        if (ShouldUseImmutableCache(context.Request.Path))
+        {
+            ApplyImmutableCache(context.Response);
+        }
+        else if (ShouldAvoidCache(context.Request.Path))
         {
             ApplyNoStore(context.Response);
         }
@@ -69,6 +82,25 @@ if (useServerRendering)
 }
 
 app.MapApiProxy(builder.Configuration);
+
+// 安卓升级文件由独立物理目录提供，允许运行中的容器接收新 APK，无需重新构建博客镜像。
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(mobileRoot),
+    RequestPath = "/mobile",
+    ContentTypeProvider = contentTypeProvider,
+    ServeUnknownFileTypes = false,
+    OnPrepareResponse = context =>
+    {
+        if (ShouldUseImmutableCache(context.Context.Request.Path))
+        {
+            ApplyImmutableCache(context.Context.Response);
+            return;
+        }
+
+        ApplyNoStore(context.Context.Response);
+    }
+});
 
 if (!useServerRendering)
 {
@@ -136,8 +168,11 @@ static void ApplyImmutableCache(HttpResponse response)
 // 判断静态模式下的资源是否可以长期缓存。
 static bool ShouldUseImmutableCache(PathString path)
 {
+    var value = path.Value ?? string.Empty;
     return path.StartsWithSegments("/_framework") ||
-        path.StartsWithSegments("/lib");
+        path.StartsWithSegments("/lib") ||
+        (path.StartsWithSegments("/mobile") &&
+            value.EndsWith(".apk", StringComparison.OrdinalIgnoreCase));
 }
 
 // 判断请求是否属于必须即时刷新的页面入口或运行时配置。
@@ -151,7 +186,8 @@ static bool ShouldAvoidCache(PathString path)
 
     if (value.EndsWith("index.html", StringComparison.OrdinalIgnoreCase) ||
         value.EndsWith("appsettings.json", StringComparison.OrdinalIgnoreCase) ||
-        value.EndsWith("appsettings.Development.json", StringComparison.OrdinalIgnoreCase))
+        value.EndsWith("appsettings.Development.json", StringComparison.OrdinalIgnoreCase) ||
+        value.EndsWith("/mobile/latest.json", StringComparison.OrdinalIgnoreCase))
     {
         return true;
     }

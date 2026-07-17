@@ -114,6 +114,7 @@ public sealed class EfThoughtStore(BlogDbContext dbContext) : IThoughtStore
         // PostgreSQL 的 timestamp with time zone 只接受 UTC DateTimeOffset，统一转换可兼容所有客户端时区。
         entry.OccurredAt = request.OccurredAt.ToUniversalTime();
         entry.ImageUrl = string.IsNullOrWhiteSpace(request.ImageUrl) ? null : request.ImageUrl.Trim();
+        entry.Tags = ThoughtTagRules.Normalize(request.Tags);
         entry.IsPublished = request.IsPublished;
     }
 
@@ -128,6 +129,7 @@ public sealed class EfThoughtStore(BlogDbContext dbContext) : IThoughtStore
             entry.OccurredAt,
             entry.ImageUrl,
             entry.IsPublished,
-            entry.UpdatedAt);
+            entry.UpdatedAt,
+            entry.Tags);
     }
 }

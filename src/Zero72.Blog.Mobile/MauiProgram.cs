@@ -13,6 +13,10 @@ public static class MauiProgram
     /// </summary>
     public static MauiApp CreateMauiApp()
     {
+#if ANDROID
+        AndroidWebViewConfiguration.Configure();
+#endif
+
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
@@ -25,6 +29,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<MobileSettingsService>();
         builder.Services.AddSingleton<SessionState>();
         builder.Services.AddSingleton<BlogApiClient>();
+        builder.Services.AddSingleton<AppUpdateService>();
 
 #if DEBUG
         builder.Services.AddBlazorWebViewDeveloperTools();

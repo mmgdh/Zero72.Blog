@@ -20,6 +20,22 @@
             <div class="form-stack">
                 <label class="field"><span>内容</span><textarea rows="8" maxlength="2000" @bind="content" placeholder="此刻在想什么？"></textarea><small>@content.Length / 2000</small></label>
                 <label class="field"><span>发生时间</span><input type="datetime-local" @bind="occurredAt" /></label>
+                <label class="field">
+                    <span>分类标签</span>
+                    <input maxlength="200" @bind="tagsText" placeholder="财经、美食、日常" />
+                    <small>使用逗号或顿号分隔，最多 @ThoughtTagRules.MaxTagCount 个标签，每个不超过 @ThoughtTagRules.MaxTagLength 个字。</small>
+                </label>
+                @if (KnownTags.Count > 0)
+                {
+                    <div class="tag-suggestions" aria-label="常用标签">
+                        <span>常用</span>
+                        @foreach (var tag in KnownTags)
+                        {
+                            <button type="button" class="@(IsEditorTagSelected(tag) ? "selected" : null)"
+                                    @onclick="() => ToggleEditorTag(tag)">#@tag</button>
+                        }
+                    </div>
+                }
                 <label class="toggle-row"><input type="checkbox" @bind="isPublished" /><span><strong>公开显示</strong><small>关闭时仅保存在后台草稿中</small></span></label>
                 <label class="field">
                     <span>配图（可选）</span>
@@ -28,7 +44,7 @@
                 </label>
                 @if (!string.IsNullOrWhiteSpace(imageUrl))
                 {
-                    <div class="thought-image-preview"><img src="@Api.ToPublicUrl(imageUrl)" alt="感悟配图预览" /><button class="text-button danger-text" @onclick="RemoveImage">移除图片</button></div>
+                    <div class="thought-image-preview"><RemoteImage ImagePath="@imageUrl" Alt="感悟配图预览" Lazy="false" /><button class="text-button danger-text" @onclick="RemoveImage">移除图片</button></div>
                 }
                 <div class="button-row">
                     <button class="primary" disabled="@isSaving" @onclick="SaveAsync">@(isSaving ? "正在同步…" : "保存感悟")</button>
@@ -48,18 +64,37 @@
     }
     else
     {
+        @if (KnownTags.Count > 0)
+        {
+            <nav class="mobile-tag-filter" aria-label="按标签筛选感悟">
+                <button type="button" class="@(selectedTag is null ? "active" : null)" @onclick="() => SelectTag(null)">全部</button>
+                @foreach (var tag in KnownTags)
+                {
+                    <button type="button" class="@(IsFilterTagSelected(tag) ? "active" : null)" @onclick="() => SelectTag(tag)">#@tag</button>
+                }
+            </nav>
+        }
         <div class="item-list">
-            @foreach (var thought in thoughts.OrderByDescending(item => item.OccurredAt))
+            @foreach (var thought in FilteredThoughts.OrderByDescending(item => item.OccurredAt))
             {
                 <article class="item-card thought-card">
                     <div class="item-topline">
                         <time>@thought.OccurredAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm")</time>
                         <span class="chip @(thought.IsPublished ? "published" : "draft")">@(thought.IsPublished ? "已公开" : "草稿")</span>
                     </div>
+                    @if (GetTags(thought).Length > 0)
+                    {
+                        <div class="thought-tag-row">
+                            @foreach (var tag in GetTags(thought))
+                            {
+                                <button type="button" @onclick="() => SelectTag(tag)">#@tag</button>
+                            }
+                        </div>
+                    }
                     <p class="thought-content">@thought.Content</p>
                     @if (!string.IsNullOrWhiteSpace(thought.ImageUrl))
                     {
-                        <img class="thought-image" src="@Api.ToPublicUrl(thought.ImageUrl)" alt="感悟配图" />
+                        <RemoteImage Class="thought-image" ImagePath="@thought.ImageUrl" Alt="感悟配图" />
                     }
                     <div class="card-actions">
                         <button class="text-button" @onclick="() => Edit(thought)">编辑</button>
@@ -78,12 +113,24 @@
     private string content = string.Empty;
     private DateTime occurredAt = DateTime.Now;
     private string? imageUrl;
+    private string tagsText = string.Empty;
+    private string? selectedTag;
     private bool isPublished = true;
     private bool isLoading = true;
     private bool isSaving;
     private bool showEditor;
     private string? errorMessage;
     private string? successMessage;
+
+    private IReadOnlyList<string> KnownTags => thoughts
+        .SelectMany(GetTags)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(tag => tag, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private IEnumerable<ThoughtItem> FilteredThoughts => selectedTag is null
+        ? thoughts
+        : thoughts.Where(thought => GetTags(thought).Contains(selectedTag, StringComparer.OrdinalIgnoreCase));
 
     /// <summary>
     /// 验证身份并载入全部公开及草稿感悟。
@@ -105,6 +152,10 @@
         {
             thoughts.Clear();
             thoughts.AddRange(await Api.GetThoughtsAsync());
+            if (selectedTag is not null && !KnownTags.Contains(selectedTag, StringComparer.OrdinalIgnoreCase))
+            {
+                selectedTag = null;
+            }
         }
         catch (Exception exception) { errorMessage = exception.Message; }
         finally { isLoading = false; }
@@ -119,6 +170,7 @@
         content = string.Empty;
         occurredAt = DateTime.Now;
         imageUrl = null;
+        tagsText = string.Empty;
         isPublished = true;
         showEditor = true;
         successMessage = null;
@@ -133,6 +185,7 @@
         content = thought.Content;
         occurredAt = thought.OccurredAt.ToLocalTime().DateTime;
         imageUrl = thought.ImageUrl;
+        tagsText = string.Join("、", GetTags(thought));
         isPublished = thought.IsPublished;
         showEditor = true;
     }
@@ -163,6 +216,19 @@
             return;
         }
 
+        var tags = ParseTags();
+        if (tags.Length > ThoughtTagRules.MaxTagCount)
+        {
+            errorMessage = $"每条感悟最多添加 {ThoughtTagRules.MaxTagCount} 个标签。";
+            return;
+        }
+
+        if (tags.Any(tag => tag.Length > ThoughtTagRules.MaxTagLength))
+        {
+            errorMessage = $"每个标签不能超过 {ThoughtTagRules.MaxTagLength} 个字。";
+            return;
+        }
+
         isSaving = true;
         errorMessage = null;
         try
@@ -170,7 +236,7 @@
             var occurredAtOffset = new DateTimeOffset(
                 occurredAt,
                 TimeZoneInfo.Local.GetUtcOffset(occurredAt)).ToUniversalTime();
-            await Api.SaveThoughtAsync(editingId, new SaveThoughtRequest(content.Trim(), occurredAtOffset, imageUrl, isPublished));
+            await Api.SaveThoughtAsync(editingId, new SaveThoughtRequest(content.Trim(), occurredAtOffset, imageUrl, isPublished, tags));
             showEditor = false;
             successMessage = isPublished ? "感悟已公开同步到博客。" : "感悟已保存为草稿。";
             await ReloadAsync();
@@ -203,4 +269,63 @@
     /// 关闭编辑器。
     /// </summary>
     private void CancelEdit() => showEditor = false;
+
+    /// <summary>
+    /// 将逗号、分号、顿号或换行分隔的输入转换为规范标签集合。
+    /// </summary>
+    private string[] ParseTags()
+    {
+        return ThoughtTagRules.Normalize(tagsText.Split([',', '，', '、', ';', '；', '\r', '\n']));
+    }
+
+    /// <summary>
+    /// 安全读取标签并兼容旧版本接口响应。
+    /// </summary>
+    private static string[] GetTags(ThoughtItem thought)
+    {
+        return thought.Tags ?? [];
+    }
+
+    /// <summary>
+    /// 从常用标签中添加或移除编辑器标签。
+    /// </summary>
+    private void ToggleEditorTag(string tag)
+    {
+        var tags = ParseTags().ToList();
+        var existing = tags.FindIndex(item => string.Equals(item, tag, StringComparison.OrdinalIgnoreCase));
+        if (existing >= 0)
+        {
+            tags.RemoveAt(existing);
+        }
+        else if (tags.Count < ThoughtTagRules.MaxTagCount)
+        {
+            tags.Add(tag);
+        }
+
+        tagsText = string.Join("、", tags);
+    }
+
+    /// <summary>
+    /// 判断常用标签是否已加入当前编辑器。
+    /// </summary>
+    private bool IsEditorTagSelected(string tag)
+    {
+        return ParseTags().Contains(tag, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 选中分类标签；再次点击已选标签时恢复全部感悟。
+    /// </summary>
+    private void SelectTag(string? tag)
+    {
+        selectedTag = tag is not null && IsFilterTagSelected(tag) ? null : tag;
+    }
+
+    /// <summary>
+    /// 判断列表筛选器是否选中了指定标签。
+    /// </summary>
+    private bool IsFilterTagSelected(string tag)
+    {
+        return string.Equals(selectedTag, tag, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -24,6 +24,7 @@ internal static class DeploymentCli
                 Host = GetOptional(options, "host", "47.114.74.197"),
                 UserName = GetOptional(options, "user", "deploy"),
                 Port = ParsePort(GetOptional(options, "port", "22")),
+                AuthenticationMode = SshAuthenticationMode.PrivateKey,
                 PrivateKeyPath = GetRequired(options, "key"),
                 RemoteRoot = GetOptional(options, "remote-root", "/opt/zero72-blog"),
                 ComposeProjectName = GetOptional(options, "compose-project", "app"),

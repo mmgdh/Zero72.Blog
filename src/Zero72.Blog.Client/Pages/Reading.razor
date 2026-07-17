@@ -11,23 +11,21 @@
             <h1>阅读记录</h1>
             <p>记录每一天的阅读足迹，见证思想的成长。</p>
         </div>
-        <div class="reading-actions">
-            <label class="filter-field">
-                <span>视图</span>
-                <select @bind="selectedView">
-                    <option value="timeline">时间线视图</option>
-                </select>
-            </label>
-            <label class="filter-field">
-                <span>开始</span>
+        <div class="reading-toolbar">
+            <span class="toolbar-title">浏览范围</span>
+            <label class="date-field">
+                <span>从</span>
                 <input type="date" value="@startDateText" @oninput="OnStartDateChanged" />
             </label>
-            <label class="filter-field">
-                <span>结束</span>
+            <span class="date-divider" aria-hidden="true">—</span>
+            <label class="date-field">
+                <span>至</span>
                 <input type="date" value="@endDateText" @oninput="OnEndDateChanged" />
             </label>
-            <button type="button" class="filter-button" @onclick="ResetDateRange">重置范围</button>
-            <NavLink class="export-button" href="/books">已读图书</NavLink>
+            <div class="toolbar-actions">
+                <button type="button" class="filter-button" @onclick="ResetDateRange">重置</button>
+                <NavLink class="library-button" href="/books">浏览书架 <span aria-hidden="true">→</span></NavLink>
+            </div>
         </div>
     </header>
 
@@ -78,15 +76,21 @@
                             }
                         </div>
 
-                        <aside class="reflection-panel">
-                            <h3>想法或感悟</h3>
-                            <ul>
+                        @if (day.Insights.Count > 0)
+                        {
+                            <aside class="reflection-panel">
+                                <div class="reflection-heading">
+                                    <h3>想法或感悟</h3>
+                                    <span>@day.Insights.Count 条</span>
+                                </div>
+                                <ol class="reflection-list">
                                 @foreach (var insight in day.Insights)
                                 {
-                                    <li>@insight</li>
+                                    <li class="@(insight.Length > 72 ? "long" : null)">@insight</li>
                                 }
-                            </ul>
-                        </aside>
+                                </ol>
+                            </aside>
+                        }
                     </section>
                 </article>
             }
@@ -100,7 +104,6 @@
     private List<ReadingTimelineDay>? timeline;
     private List<ReadingTimelineDay> filteredTimeline = [];
     private string? errorMessage;
-    private string selectedView = "timeline";
     private string startDateText = string.Empty;
     private string endDateText = string.Empty;
     private bool hasDateFilter;

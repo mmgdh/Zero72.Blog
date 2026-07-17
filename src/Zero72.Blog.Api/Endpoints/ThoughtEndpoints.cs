@@ -102,6 +102,17 @@ public static class ThoughtEndpoints
             return Results.BadRequest("Image URL is too long.");
         }
 
+        var tags = ThoughtTagRules.Normalize(request.Tags);
+        if (tags.Length > ThoughtTagRules.MaxTagCount)
+        {
+            return Results.BadRequest($"A thought can have at most {ThoughtTagRules.MaxTagCount} tags.");
+        }
+
+        if (tags.Any(tag => tag.Length > ThoughtTagRules.MaxTagLength))
+        {
+            return Results.BadRequest($"Each tag must be {ThoughtTagRules.MaxTagLength} characters or fewer.");
+        }
+
         return null;
     }
 }

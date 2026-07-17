@@ -1,7 +1,9 @@
+using System.Text.Json.Serialization;
+
 namespace Zero72.Blog.Deployer.Models;
 
 /// <summary>
-/// 保存发布目标和本地项目位置等非敏感配置；私钥仅保存路径，不保存其内容。
+/// 保存发布目标和本地项目位置等配置；私钥仅保存路径，登录密码不会序列化。
 /// </summary>
 public sealed class DeploymentSettings
 {
@@ -24,6 +26,17 @@ public sealed class DeploymentSettings
     /// 获取或设置 SSH 端口。
     /// </summary>
     public int Port { get; set; } = 22;
+
+    /// <summary>
+    /// 获取或设置 SSH 身份认证方式。
+    /// </summary>
+    public SshAuthenticationMode AuthenticationMode { get; set; } = SshAuthenticationMode.Password;
+
+    /// <summary>
+    /// 获取或设置当前运行期间使用的 SSH 登录密码；该值不会写入配置文件。
+    /// </summary>
+    [JsonIgnore]
+    public string Password { get; set; } = string.Empty;
 
     /// <summary>
     /// 获取或设置 SSH 私钥文件路径。

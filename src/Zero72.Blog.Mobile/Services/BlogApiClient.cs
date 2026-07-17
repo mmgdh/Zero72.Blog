@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Zero72.Blog.Mobile.Models;
 using Zero72.Blog.Reading;
 using Zero72.Blog.Shared;
 
@@ -85,6 +86,26 @@ public sealed class BlogApiClient : IDisposable
         }
 
         session.Update(false, null);
+    }
+
+    /// <summary>
+    /// 获取博客服务器公开的安卓最新版本清单；尚未发布升级包时返回空值。
+    /// </summary>
+    public async Task<MobileReleaseInfo?> GetLatestReleaseAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var cacheBuster = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"mobile/latest.json?v={cacheBuster}",
+            cancellationToken);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        await EnsureSuccessAsync(response, cancellationToken);
+        return await response.Content.ReadFromJsonAsync<MobileReleaseInfo>(cancellationToken);
     }
 
     /// <summary>
@@ -219,9 +240,17 @@ public sealed class BlogApiClient : IDisposable
             return null;
         }
 
-        return Uri.TryCreate(path, UriKind.Absolute, out var absolute)
-            ? absolute.AbsoluteUri
-            : new Uri(settings.GetBaseUri(), path.TrimStart('/')).AbsoluteUri;
+        var baseUri = settings.GetBaseUri();
+        if (!Uri.TryCreate(path.Trim(), UriKind.Absolute, out var absolute))
+        {
+            return new Uri(baseUri, path.Trim().TrimStart('/')).AbsoluteUri;
+        }
+
+        var isHttp = absolute.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+            absolute.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        var isCurrentServer = absolute.Host.Equals(baseUri.Host, StringComparison.OrdinalIgnoreCase) &&
+            absolute.Port == baseUri.Port;
+        return isHttp && isCurrentServer ? absolute.AbsoluteUri : null;
     }
 
     /// <summary>
