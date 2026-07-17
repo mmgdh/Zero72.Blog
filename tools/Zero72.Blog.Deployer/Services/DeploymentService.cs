@@ -159,6 +159,9 @@ public sealed partial class DeploymentService(
             throw new InvalidOperationException($"升级清单对应的 APK 不存在：{apkFileName}");
         }
 
+        progress.Report("正在检查服务器是否已启用安卓独立发布……");
+        await EnsureMobileUploadReadyAsync(settings, progress, cancellationToken);
+
         await using var apkStream = File.OpenRead(apkPath);
         var apkHash = Convert.ToHexStringLower(
             await SHA256.HashDataAsync(apkStream, cancellationToken));
@@ -174,18 +177,19 @@ public sealed partial class DeploymentService(
         var remoteManifest = "/tmp/latest.json";
         var command = string.Join(
             ' ',
-            "set -Eeuo pipefail;",
+            "set -uo pipefail;",
+            "fail() { echo \"$1\" >&2; exit 1; };",
             "privileged() { if [ \"$(id -u)\" = \"0\" ]; then \"$@\"; else sudo -n \"$@\"; fi; };",
-            $"privileged mkdir -p {remoteMobileRoot};",
-            $"privileged install -m 0644 {remoteApk} {remoteMobileRoot}/{apkFileName};",
-            $"privileged install -m 0644 {remoteManifest} {remoteMobileRoot}/latest.json.next;",
-            $"privileged mv -f {remoteMobileRoot}/latest.json.next {remoteMobileRoot}/latest.json;",
-            $"privileged find {remoteMobileRoot} -maxdepth 1 -type f -name 'Zero72.Blog.Mobile-*.apk' ! -name '{apkFileName}' -delete;",
+            $"trap 'rm -f {remoteApk} {remoteManifest}' EXIT;",
+            $"privileged mkdir -p {remoteMobileRoot} || fail '无法创建安卓发布目录。';",
+            $"privileged install -m 0644 {remoteApk} {remoteMobileRoot}/{apkFileName} || fail 'APK 写入发布目录失败。';",
             $"actual_hash=$(privileged sha256sum {remoteMobileRoot}/{apkFileName} | awk '{{print $1}}');",
-            $"test \"$actual_hash\" = \"{apkHash}\";",
-            $"curl -fsSL --max-time 20 http://127.0.0.1:{settings.ClientPort}/mobile/latest.json | grep -Fq '{apkFileName}';",
-            $"curl -fsSI --max-time 20 http://127.0.0.1:{settings.ClientPort}/mobile/{apkFileName} >/dev/null;",
-            $"rm -f {remoteApk} {remoteManifest};",
+            $"test \"$actual_hash\" = \"{apkHash}\" || fail '服务器 APK 的 SHA-256 校验失败。';",
+            $"privileged install -m 0644 {remoteManifest} {remoteMobileRoot}/latest.json.next || fail '版本清单写入失败。';",
+            $"privileged mv -f {remoteMobileRoot}/latest.json.next {remoteMobileRoot}/latest.json || fail '版本清单切换失败。';",
+            $"curl -fsSL --max-time 20 http://127.0.0.1:{settings.ClientPort}/mobile/latest.json | grep -Fq '{apkFileName}' || fail '博客没有返回刚上传的版本清单。';",
+            $"curl -fsSI --max-time 20 http://127.0.0.1:{settings.ClientPort}/mobile/{apkFileName} >/dev/null || fail 'APK 公开下载地址不可访问。';",
+            $"privileged find {remoteMobileRoot} -maxdepth 1 -type f -name 'Zero72.Blog.Mobile-*.apk' ! -name '{apkFileName}' -delete || fail '旧 APK 清理失败。';",
             "printf MOBILE_DEPLOYMENT_SUCCESS");
         await ExecuteRemoteCommandAsync(settings, command, progress, cancellationToken);
 
@@ -193,6 +197,28 @@ public sealed partial class DeploymentService(
             $"http://{settings.Host}:{settings.ClientPort}/mobile/{apkFileName}");
         progress.Report($"\r\nAndroid {versionName} 已单独发布：{downloadUri}");
         return downloadUri;
+    }
+
+    /// <summary>
+    /// 在传输大文件前确认当前客户端容器已经挂载持久化安卓目录，避免上传完成后才发现服务器尚未初始化。
+    /// </summary>
+    private async Task EnsureMobileUploadReadyAsync(
+        DeploymentSettings settings,
+        IProgress<string> progress,
+        CancellationToken cancellationToken)
+    {
+        var currentRoot = $"{settings.RemoteRoot}/app";
+        var command = string.Join(
+            ' ',
+            "set -uo pipefail;",
+            "docker_cmd() { if [ \"$(id -u)\" = \"0\" ]; then docker \"$@\"; else sudo -n docker \"$@\"; fi; };",
+            $"cd {currentRoot} || {{ echo '服务器部署目录不存在，请先执行完整发布。' >&2; exit 40; }};",
+            $"container=$(docker_cmd compose -p {settings.ComposeProjectName} --env-file .env -f docker-compose.prod.yml ps -q client);",
+            "test -n \"$container\" || { echo '没有找到正在运行的博客客户端容器。' >&2; exit 41; };",
+            "mounts=$(docker_cmd inspect --format='{{range .Mounts}}{{println .Destination}}{{end}}' \"$container\");",
+            "printf '%s\\n' \"$mounts\" | grep -Fxq '/app/wwwroot/mobile' || { echo '服务器尚未启用安卓独立发布，请先执行一次“开始一键发布”。' >&2; exit 42; };",
+            "printf MOBILE_UPLOAD_READY");
+        await ExecuteRemoteCommandAsync(settings, command, progress, cancellationToken);
     }
 
     /// <summary>

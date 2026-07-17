@@ -11,7 +11,7 @@ namespace Zero72.Blog.Deployer.Services;
 /// </summary>
 public sealed class PasswordSshClient(KnownHostStore knownHostStore)
 {
-    private const int UploadChunkSize = 256 * 1024;
+    private const int UploadChunkSize = 1024 * 1024;
     private const int UploadRetryCount = 3;
     private static readonly TimeSpan ConnectionTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(45);
@@ -44,7 +44,10 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
 
         if (command.ExitStatus != 0)
         {
-            throw new InvalidOperationException($"远程命令执行失败，退出码：{command.ExitStatus}。");
+            var detail = errorTask.Result ?? outputTask.Result;
+            var suffix = string.IsNullOrWhiteSpace(detail) ? string.Empty : $"；{detail}";
+            throw new InvalidOperationException(
+                $"远程命令执行失败，退出码：{command.ExitStatus}{suffix}。");
         }
     }
 
@@ -84,7 +87,8 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
     }
 
     /// <summary>
-    /// 使用独立短连接按固定偏移分块写入远程临时文件，最后验证 SHA-256 并原子改名。
+    /// 复用单条 SSH 连接按固定偏移分块写入远程临时文件；连接中断时只重试当前分块，
+    /// 最后使用 SHA-256 校验并原子改名。
     /// </summary>
     private async Task UploadFileInChunksAsync(
         DeploymentSettings settings,
@@ -99,64 +103,76 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
         var expectedHash = Convert.ToHexStringLower(hashBytes);
         input.Position = 0;
 
-        await ExecuteUploadCommandWithRetryAsync(
-            settings,
-            $"umask 077; : > {QuoteShellArgument(temporaryPath)}",
-            ReadOnlyMemory<byte>.Empty,
-            progress,
-            cancellationToken);
-
-        var buffer = new byte[UploadChunkSize];
-        var totalChunks = Math.Max(1, (input.Length + UploadChunkSize - 1) / UploadChunkSize);
-        for (var chunkIndex = 0L; ; chunkIndex++)
+        SshClient? client = null;
+        try
         {
-            var bytesRead = await ReadChunkAsync(input, buffer, cancellationToken);
-            if (bytesRead == 0)
-            {
-                break;
-            }
-
-            var writeCommand = string.Join(
-                ' ',
-                $"dd of={QuoteShellArgument(temporaryPath)}",
-                $"bs={UploadChunkSize}",
-                $"seek={chunkIndex}",
-                "conv=notrunc status=none");
-            await ExecuteUploadCommandWithRetryAsync(
+            client = await ExecuteUploadCommandWithRetryAsync(
                 settings,
-                writeCommand,
-                buffer.AsMemory(0, bytesRead),
+                $"umask 077; : > {QuoteShellArgument(temporaryPath)}",
+                ReadOnlyMemory<byte>.Empty,
+                client,
                 progress,
                 cancellationToken);
 
-            var percent = Math.Min(100, (int)((chunkIndex + 1) * 100 / totalChunks));
-            progress.Report($"上传 {Path.GetFileName(localPath)}：{percent}%");
-        }
+            var buffer = new byte[UploadChunkSize];
+            var totalChunks = Math.Max(1, (input.Length + UploadChunkSize - 1) / UploadChunkSize);
+            for (var chunkIndex = 0L; ; chunkIndex++)
+            {
+                var bytesRead = await ReadChunkAsync(input, buffer, cancellationToken);
+                if (bytesRead == 0)
+                {
+                    break;
+                }
 
-        var verifyCommand = string.Join(
-            ' ',
-            "printf '%s  %s\\n'",
-            QuoteShellArgument(expectedHash),
-            QuoteShellArgument(temporaryPath),
-            "| sha256sum -c -",
-            "&& mv -f",
-            QuoteShellArgument(temporaryPath),
-            QuoteShellArgument(remotePath));
-        await ExecuteUploadCommandWithRetryAsync(
-            settings,
-            verifyCommand,
-            ReadOnlyMemory<byte>.Empty,
-            progress,
-            cancellationToken);
+                var writeCommand = string.Join(
+                    ' ',
+                    $"dd of={QuoteShellArgument(temporaryPath)}",
+                    $"bs={UploadChunkSize}",
+                    $"seek={chunkIndex}",
+                    "conv=notrunc status=none");
+                client = await ExecuteUploadCommandWithRetryAsync(
+                    settings,
+                    writeCommand,
+                    buffer.AsMemory(0, bytesRead),
+                    client,
+                    progress,
+                    cancellationToken);
+
+                var percent = Math.Min(100, (int)((chunkIndex + 1) * 100 / totalChunks));
+                progress.Report($"上传 {Path.GetFileName(localPath)}：{percent}%");
+            }
+
+            var verifyCommand = string.Join(
+                ' ',
+                "printf '%s  %s\\n'",
+                QuoteShellArgument(expectedHash),
+                QuoteShellArgument(temporaryPath),
+                "| sha256sum -c -",
+                "&& mv -f",
+                QuoteShellArgument(temporaryPath),
+                QuoteShellArgument(remotePath));
+            client = await ExecuteUploadCommandWithRetryAsync(
+                settings,
+                verifyCommand,
+                ReadOnlyMemory<byte>.Empty,
+                client,
+                progress,
+                cancellationToken);
+        }
+        finally
+        {
+            client?.Dispose();
+        }
     }
 
     /// <summary>
-    /// 使用新 SSH 短连接执行一个上传步骤，连接中断时安全重试当前幂等分块。
+    /// 优先复用现有 SSH 连接执行上传步骤，连接中断时创建新连接并安全重试当前幂等分块。
     /// </summary>
-    private async Task ExecuteUploadCommandWithRetryAsync(
+    private async Task<SshClient> ExecuteUploadCommandWithRetryAsync(
         DeploymentSettings settings,
         string commandText,
         ReadOnlyMemory<byte> payload,
+        SshClient? client,
         IProgress<string> progress,
         CancellationToken cancellationToken)
     {
@@ -165,8 +181,13 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
         {
             try
             {
-                using var client = CreateSshClient(settings, progress);
-                await client.ConnectAsync(cancellationToken);
+                if (client is null || !client.IsConnected)
+                {
+                    client?.Dispose();
+                    client = CreateSshClient(settings, progress);
+                    await client.ConnectAsync(cancellationToken);
+                }
+
                 using var command = client.CreateCommand(commandText);
                 command.CommandTimeout = CommandTimeout;
                 var executionTask = command.ExecuteAsync(cancellationToken);
@@ -183,20 +204,25 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
                         $"远程上传步骤失败，退出码：{command.ExitStatus}；{command.Error.Trim()}");
                 }
 
-                return;
+                return client;
             }
             catch (OperationCanceledException)
             {
+                client?.Dispose();
                 throw;
             }
             catch (Exception exception) when (attempt < UploadRetryCount)
             {
                 lastException = exception;
+                client?.Dispose();
+                client = null;
                 progress.Report($"上传连接中断，正在重试当前分块（{attempt}/{UploadRetryCount}）……");
             }
             catch (Exception exception)
             {
                 lastException = exception;
+                client?.Dispose();
+                client = null;
             }
         }
 
@@ -314,11 +340,12 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
     /// <summary>
     /// 实时按行转发远程输出并跳过空白内容。
     /// </summary>
-    private static async Task PumpOutputAsync(
+    private static async Task<string?> PumpOutputAsync(
         Stream stream,
         IProgress<string> progress,
         CancellationToken cancellationToken)
     {
+        string? lastLine = null;
         using var reader = new StreamReader(
             stream,
             Encoding.UTF8,
@@ -329,11 +356,12 @@ public sealed class PasswordSshClient(KnownHostStore knownHostStore)
             var line = await reader.ReadLineAsync(cancellationToken);
             if (line is null)
             {
-                return;
+                return lastLine;
             }
 
             if (!string.IsNullOrWhiteSpace(line))
             {
+                lastLine = line.Trim();
                 progress.Report(line);
             }
         }
