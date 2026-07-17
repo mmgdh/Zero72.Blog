@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddDbContext<BlogDbContext>(options =>
             options.UseNpgsql(connectionString));
         services.AddScoped<IReadingLibraryStore, EfReadingLibraryStore>();
+        services.AddScoped<IThoughtStore, EfThoughtStore>();
 
         return services;
     }

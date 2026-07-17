@@ -1,0 +1,251 @@
+@page "/reading"
+@inherits AuthenticatedPageBase
+@inject IJSRuntime JavaScript
+
+<PageTitle>阅读记录 · Zero72 博客助手</PageTitle>
+
+<section class="page">
+    <header class="page-heading heading-row">
+        <div><p class="eyebrow">Reading Log</p><h1>阅读记录</h1><p>记录时间、范围和当下的阅读想法。</p></div>
+        <button class="primary compact" @onclick="StartCreate">＋ 新记录</button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert error">@errorMessage</div>
+    }
+    @if (!string.IsNullOrWhiteSpace(successMessage))
+    {
+        <div class="alert success">@successMessage</div>
+    }
+
+    @if (showEditor)
+    {
+        <section class="panel editor-panel">
+            <div class="section-title"><h2>@(editingId is null ? "新增阅读记录" : "编辑阅读记录")</h2></div>
+            <div class="form-stack">
+                <label class="field">
+                    <span>书籍</span>
+                    <select @bind="bookIdText">
+                        <option value="">请选择一本书</option>
+                        @foreach (var book in books)
+                        {
+                            <option value="@book.Id">@book.Title</option>
+                        }
+                    </select>
+                </label>
+                <div class="form-grid two-columns">
+                    <label class="field"><span>阅读日期</span><input type="date" @bind="readDate" /></label>
+                    <label class="field"><span>阅读范围</span><input @bind="chapter" placeholder="如：第 3 章 / P42–68" /></label>
+                    <label class="field"><span>开始时间</span><input type="time" @bind="startedAt" /></label>
+                    <label class="field"><span>结束时间</span><input type="time" @bind="finishedAt" /></label>
+                </div>
+                <label class="field">
+                    <span>阅读想法</span>
+                    <textarea rows="6" @bind="reflectionsText" placeholder="每段感悟单独一行"></textarea>
+                    <small>每个非空行会保存为一条阅读感悟。</small>
+                </label>
+                <div class="button-row">
+                    <button class="primary" disabled="@isSaving" @onclick="SaveAsync">@(isSaving ? "正在保存…" : "保存记录")</button>
+                    <button class="secondary" @onclick="CancelEdit">取消</button>
+                </div>
+            </div>
+        </section>
+    }
+
+    @if (isLoading)
+    {
+        <div class="loading-card">正在读取阅读记录…</div>
+    }
+    else if (records.Count == 0)
+    {
+        <div class="empty-state"><strong>还没有阅读记录</strong><p>从今天读过的内容开始吧。</p></div>
+    }
+    else
+    {
+        <div class="item-list">
+            @foreach (var record in records.OrderByDescending(item => item.ReadDate).ThenByDescending(item => item.StartedAt))
+            {
+                <article class="item-card">
+                    <div class="item-topline">
+                        <span class="date-badge">@record.ReadDate.ToString("MM.dd")</span>
+                        <span class="meta">@record.StartedAt.ToString("HH:mm")–@record.FinishedAt.ToString("HH:mm") · @record.DurationHours.ToString("0.0") 小时</span>
+                    </div>
+                    <h2>@record.BookTitle</h2>
+                    <p class="meta">@record.Chapter</p>
+                    @foreach (var reflection in record.Reflections)
+                    {
+                        <p class="reflection">@reflection</p>
+                    }
+                    <div class="card-actions">
+                        <button class="text-button" @onclick="() => Edit(record)">编辑</button>
+                        <button class="text-button danger-text" @onclick="() => DeleteAsync(record)">删除</button>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private readonly List<ReadingBook> books = [];
+    private readonly List<ReadingRecord> records = [];
+    private Guid? editingId;
+    private string bookIdText = string.Empty;
+    private DateTime readDate = DateTime.Today;
+    private TimeOnly? startedAt = TimeOnly.FromDateTime(DateTime.Now);
+    private TimeOnly? finishedAt = TimeOnly.FromDateTime(DateTime.Now.AddMinutes(30));
+    private string chapter = string.Empty;
+    private string reflectionsText = string.Empty;
+    private string? errorMessage;
+    private string? successMessage;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool showEditor;
+
+    /// <summary>
+    /// 验证身份并加载图书与阅读记录。
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await EnsureAuthenticatedAsync())
+        {
+            return;
+        }
+
+        await ReloadAsync();
+        if (Navigation.Uri.Contains("new=1", StringComparison.OrdinalIgnoreCase))
+        {
+            StartCreate();
+        }
+    }
+
+    /// <summary>
+    /// 并行刷新编辑选项和记录列表。
+    /// </summary>
+    private async Task ReloadAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            var booksTask = Api.GetBooksAsync();
+            var recordsTask = Api.GetReadingRecordsAsync();
+            await Task.WhenAll(booksTask, recordsTask);
+            books.Clear();
+            books.AddRange(booksTask.Result.OrderBy(item => item.Title));
+            records.Clear();
+            records.AddRange(recordsTask.Result);
+        }
+        catch (Exception exception)
+        {
+            errorMessage = exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// 清空表单并切换到新增模式。
+    /// </summary>
+    private void StartCreate()
+    {
+        editingId = null;
+        bookIdText = books.FirstOrDefault()?.Id.ToString() ?? string.Empty;
+        readDate = DateTime.Today;
+        startedAt = TimeOnly.FromDateTime(DateTime.Now);
+        finishedAt = TimeOnly.FromDateTime(DateTime.Now.AddMinutes(30));
+        chapter = string.Empty;
+        reflectionsText = string.Empty;
+        showEditor = true;
+        successMessage = null;
+    }
+
+    /// <summary>
+    /// 把已有记录填入编辑表单。
+    /// </summary>
+    private void Edit(ReadingRecord record)
+    {
+        editingId = record.Id;
+        bookIdText = record.BookId.ToString();
+        readDate = record.ReadDate.ToDateTime(TimeOnly.MinValue);
+        startedAt = record.StartedAt;
+        finishedAt = record.FinishedAt;
+        chapter = record.Chapter;
+        reflectionsText = string.Join(Environment.NewLine, record.Reflections);
+        showEditor = true;
+        successMessage = null;
+    }
+
+    /// <summary>
+    /// 校验并上传当前阅读记录表单。
+    /// </summary>
+    private async Task SaveAsync()
+    {
+        errorMessage = null;
+        if (!Guid.TryParse(bookIdText, out var bookId)
+            || startedAt is null
+            || finishedAt is null
+            || string.IsNullOrWhiteSpace(chapter))
+        {
+            errorMessage = "请完整填写书籍、日期、时间和阅读范围。";
+            return;
+        }
+
+        var reflections = reflectionsText.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        isSaving = true;
+        try
+        {
+            await Api.SaveReadingRecordAsync(editingId, new SaveReadingRecordRequest(
+                DateOnly.FromDateTime(readDate),
+                bookId,
+                chapter.Trim(),
+                startedAt.Value,
+                finishedAt.Value,
+                reflections));
+            showEditor = false;
+            successMessage = "阅读记录已同步到博客。";
+            await ReloadAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = exception.Message;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// 二次确认后删除阅读记录。
+    /// </summary>
+    private async Task DeleteAsync(ReadingRecord record)
+    {
+        if (!await JavaScript.InvokeAsync<bool>("confirm", $"确认删除《{record.BookTitle}》的这条阅读记录吗？"))
+        {
+            return;
+        }
+
+        try
+        {
+            await Api.DeleteReadingRecordAsync(record.Id);
+            successMessage = "阅读记录已删除。";
+            await ReloadAsync();
+        }
+        catch (Exception exception)
+        {
+            errorMessage = exception.Message;
+        }
+    }
+
+    /// <summary>
+    /// 关闭编辑器且不保存当前输入。
+    /// </summary>
+    private void CancelEdit()
+    {
+        showEditor = false;
+    }
+}

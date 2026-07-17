@@ -15,12 +15,13 @@ public static class AdminAssetEndpoints
 
     public static IEndpointRouteBuilder MapAdminAssetEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/assets").WithTags("Admin Assets");
+        var group = app.MapGroup("/api/admin/assets")
+            .WithTags("Admin Assets")
+            .RequireAuthorization();
 
         group.MapPost("/images", async (
             IFormFile file,
             IWebHostEnvironment environment,
-            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             if (file.Length == 0)
@@ -50,11 +51,9 @@ public static class AdminAssetEndpoints
             await using var stream = File.Create(targetPath);
             await file.CopyToAsync(stream, cancellationToken);
 
-            var request = httpContext.Request;
             var publicPath = $"/uploads/{uploadMonth}/{safeFileName}";
-            var publicUrl = $"{request.Scheme}://{request.Host}{publicPath}";
 
-            return Results.Ok(new UploadImageResponse(publicUrl, file.FileName));
+            return Results.Ok(new UploadImageResponse(publicPath, file.FileName));
         })
         .DisableAntiforgery();
 

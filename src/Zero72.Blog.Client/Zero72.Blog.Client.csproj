@@ -1,22 +1,31 @@
-<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.5" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.5" PrivateAssets="all" />
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.5" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Zero72.Blog.Components\Zero72.Blog.Components.csproj" />
     <ProjectReference Include="..\Zero72.Blog.Reading\Zero72.Blog.Reading.csproj" />
     <ProjectReference Include="..\Zero72.Blog.Shared\Zero72.Blog.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="wwwroot\appsettings*.json" />
+    <Content Remove="wwwroot\index.html" />
+    <Content Remove="wwwroot\lib\**" />
   </ItemGroup>
 
 </Project>

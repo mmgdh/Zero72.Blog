@@ -1,3 +1,5 @@
+@rendermode InteractiveServer
+
 <header class="navbar">
     <div class="navbar-title">
         <NavLink class="navbar-title-link" href="/blog" Match="NavLinkMatch.All">
@@ -25,7 +27,7 @@
                 </NavLink>
                 <NavLink href="/notes" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
                     <span class="nav-image">N</span>
-                    随笔
+                    思考记录
                 </NavLink>
                 <NavLink href="/projects" Match="NavLinkMatch.All" @onclick="CloseNavMenu">
                     <span class="nav-image">P</span>
@@ -68,11 +70,17 @@
         ? "navbar-menu nav-items"
         : "navbar-menu nav-items active";
 
+    /// <summary>
+    /// 切换移动端导航菜单的展开状态。
+    /// </summary>
     private void ToggleNavMenu()
     {
         collapseNavMenu = !collapseNavMenu;
     }
 
+    /// <summary>
+    /// 在完成导航后收起移动端菜单。
+    /// </summary>
     private void CloseNavMenu()
     {
         collapseNavMenu = true;

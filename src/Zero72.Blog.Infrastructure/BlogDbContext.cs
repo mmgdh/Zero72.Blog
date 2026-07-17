@@ -12,6 +12,8 @@ public sealed class BlogDbContext(DbContextOptions<BlogDbContext> options) : DbC
 
     public DbSet<ReadingRecordEntity> ReadingRecords => Set<ReadingRecordEntity>();
 
+    public DbSet<ThoughtEntry> ThoughtEntries => Set<ThoughtEntry>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<BlogPost>(entity =>
@@ -59,6 +61,21 @@ public sealed class BlogDbContext(DbContextOptions<BlogDbContext> options) : DbC
                 .HasForeignKey(record => record.BookId)
                 .OnDelete(DeleteBehavior.Restrict)
                 .IsRequired();
+        });
+
+        modelBuilder.Entity<ThoughtEntry>(entity =>
+        {
+            entity.ToTable("thought_entries");
+            entity.HasKey(item => item.Id);
+            entity.HasIndex(item => item.OccurredAt);
+            entity.HasIndex(item => item.IsPublished);
+
+            entity.Property(item => item.Content).HasMaxLength(2000).IsRequired();
+            entity.Property(item => item.OccurredAt).IsRequired();
+            entity.Property(item => item.ImageUrl).HasMaxLength(500);
+            entity.Property(item => item.IsPublished).IsRequired();
+            entity.Property(item => item.CreatedAt).IsRequired();
+            entity.Property(item => item.UpdatedAt).IsRequired();
         });
 
         base.OnModelCreating(modelBuilder);

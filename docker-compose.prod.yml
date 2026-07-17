@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Zero72.Blog.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__BlogDb: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      AdminAuth__UserName: ${ADMIN_USERNAME}
+      AdminAuth__Password: ${ADMIN_PASSWORD}
+      Cors__AllowedOrigins__0: http://${PUBLIC_HOST}:${CLIENT_PORT}
+      Cors__AllowedOrigins__1: http://${PUBLIC_HOST}:${ADMIN_PORT}
+      ProxyGuard__HeaderName: ${INTERNAL_PROXY_HEADER}
+      ProxyGuard__Secret: ${INTERNAL_PROXY_SECRET}
+      RateLimiting__PublicPermitLimit: ${API_RATE_LIMIT_PER_MINUTE}
+      RateLimiting__AdminAuthPermitLimit: ${ADMIN_AUTH_RATE_LIMIT_PER_5_MINUTES}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    volumes:
+      - uploads-data:/app/wwwroot/uploads
+      - data-protection-keys:/root/.aspnet/DataProtection-Keys
+
+  client:
+    build:
+      context: .
+      dockerfile: src/Zero72.Blog.Client/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Hosting__Mode: Server
+      Proxy__ApiBaseUrl: http://api:8080
+      Proxy__HeaderName: ${INTERNAL_PROXY_HEADER}
+      Proxy__Secret: ${INTERNAL_PROXY_SECRET}
+    depends_on:
+      - api
+    ports:
+      - "${CLIENT_PORT}:8080"
+    volumes:
+      - client-data-protection-keys:/root/.aspnet/DataProtection-Keys
+
+  admin:
+    build:
+      context: .
+      dockerfile: src/Zero72.Blog.Admin/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      Hosting__Mode: Static
+      Proxy__ApiBaseUrl: http://api:8080
+      Proxy__HeaderName: ${INTERNAL_PROXY_HEADER}
+      Proxy__Secret: ${INTERNAL_PROXY_SECRET}
+    depends_on:
+      - api
+    ports:
+      - "${ADMIN_PORT}:8080"
+    volumes:
+      - ./deploy/runtime/admin-appsettings.json:/app/wwwroot/appsettings.json:ro
+
+volumes:
+  postgres-data:
+  uploads-data:
+  data-protection-keys:
+  client-data-protection-keys:

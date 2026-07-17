@@ -1,0 +1,82 @@
+@page "/"
+@inherits AuthenticatedPageBase
+
+<PageTitle>首页 · Zero72 博客助手</PageTitle>
+
+<section class="page">
+    <header class="page-heading">
+        <p class="eyebrow">随时记录，立即同步</p>
+        <h1>你好，@Session.UserName</h1>
+        <p>这里只保留适合手机快速维护的内容，博文仍然在网页后台编辑。</p>
+    </header>
+
+    @if (isLoading)
+    {
+        <div class="loading-card">正在读取博客数据…</div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert error">@errorMessage</div>
+    }
+    else
+    {
+        <div class="metric-grid">
+            <article class="metric-card"><strong>@recordCount</strong><span>阅读记录</span></article>
+            <article class="metric-card"><strong>@bookCount</strong><span>所读书籍</span></article>
+            <article class="metric-card"><strong>@thoughtCount</strong><span>临时感悟</span></article>
+        </div>
+    }
+
+    <section class="panel">
+        <div class="section-title"><h2>快速开始</h2></div>
+        <div class="quick-grid">
+            <NavLink class="action-card" href="/reading?new=1">
+                <span class="action-icon">读</span><strong>记录本次阅读</strong><small>时间、章节和阅读感悟</small>
+            </NavLink>
+            <NavLink class="action-card" href="/thoughts?new=1">
+                <span class="action-icon">想</span><strong>写下临时感悟</strong><small>可先存草稿，稍后公开</small>
+            </NavLink>
+            <NavLink class="action-card" href="/books?new=1">
+                <span class="action-icon">书</span><strong>添加一本书</strong><small>维护书名、作者和封面</small>
+            </NavLink>
+        </div>
+    </section>
+</section>
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private int recordCount;
+    private int bookCount;
+    private int thoughtCount;
+
+    /// <summary>
+    /// 验证登录状态并并行读取首页统计数据。
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await EnsureAuthenticatedAsync())
+        {
+            return;
+        }
+
+        try
+        {
+            var recordsTask = Api.GetReadingRecordsAsync();
+            var booksTask = Api.GetBooksAsync();
+            var thoughtsTask = Api.GetThoughtsAsync();
+            await Task.WhenAll(recordsTask, booksTask, thoughtsTask);
+            recordCount = recordsTask.Result.Count;
+            bookCount = booksTask.Result.Count;
+            thoughtCount = thoughtsTask.Result.Count;
+        }
+        catch (Exception exception)
+        {
+            errorMessage = exception.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

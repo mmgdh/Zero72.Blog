@@ -1,39 +1,43 @@
 @page "/notes"
 @inject HttpClient Http
 
-<PageTitle>随笔 - Zero72 博客</PageTitle>
+<PageTitle>思考记录 - Zero72 博客</PageTitle>
 
 <main class="main-content page">
     <section class="section-index">
         <header class="heading">
             <h2>
                 <span class="heading-icon">N</span>
-                <span>随笔</span>
+                <span>思考记录</span>
             </h2>
-            <div class="description">生活、项目、学习日志，以及那些暂时放不进长文里的想法。</div>
+            <div class="description">生活、项目、学习，以及那些暂时不需要展开成长文的想法。</div>
         </header>
 
-        @if (posts is null)
+        @if (thoughts is null)
         {
-            <section class="status-panel">正在加载随笔...</section>
+            <section class="status-panel">正在加载思考记录...</section>
         }
         else if (!string.IsNullOrWhiteSpace(errorMessage))
         {
             <section class="status-panel status-error">@errorMessage</section>
         }
-        else if (notes.Count == 0)
+        else if (thoughts.Count == 0)
         {
-            <div class="empty-note">更多随笔会随着这个数字花园一起生长。</div>
+            <div class="empty-note">更多想法会随着这个数字花园一起生长。</div>
         }
         else
         {
-            <div class="posts">
-                @foreach (var post in notes)
+            <div class="thought-timeline">
+                @foreach (var thought in thoughts)
                 {
-                    <NavLink class="post" href="@GetPostUrl(post)">
-                        <time datetime="@FormatMachineDate(post.PublishedAt)">@FormatDisplayDate(post.PublishedAt)</time>
-                        <div>@post.Title</div>
-                    </NavLink>
+                    <article class="thought-card">
+                        <time datetime="@FormatMachineDate(thought.OccurredAt)">@FormatDisplayDate(thought.OccurredAt)</time>
+                        <p>@thought.Content</p>
+                        @if (!string.IsNullOrWhiteSpace(thought.ImageUrl))
+                        {
+                            <img src="@thought.ImageUrl" alt="思考记录配图" loading="lazy" />
+                        }
+                    </article>
                 }
             </div>
         }
@@ -41,37 +45,32 @@
 </main>
 
 @code {
-    private List<BlogPostSummary>? posts;
-    private List<BlogPostSummary> notes = [];
+    private List<ThoughtItem>? thoughts;
     private string? errorMessage;
 
+    // 从公开接口加载已经发布的思考记录。
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            posts = await Http.GetFromJsonAsync<List<BlogPostSummary>>("api/posts") ?? [];
-            notes = posts.Skip(5).Take(10).ToList();
+            thoughts = await Http.GetFromJsonAsync<List<ThoughtItem>>("api/thoughts") ?? [];
         }
         catch (Exception)
         {
-            posts = [];
-            notes = [];
-            errorMessage = "无法从后端接口读取随笔。";
+            thoughts = [];
+            errorMessage = "无法从后端接口读取思考记录。";
         }
     }
 
-    private static string GetPostUrl(BlogPostSummary post)
+    // 将发生时间格式化为适合时间线阅读的本地日期。
+    private static string FormatDisplayDate(DateTimeOffset occurredAt)
     {
-        return $"/posts/{post.Slug}";
+        return occurredAt.ToLocalTime().ToString("yyyy年MM月dd日 HH:mm");
     }
 
-    private static string FormatDisplayDate(DateTimeOffset? publishedAt)
+    // 输出供 time 元素使用的机器可读时间。
+    private static string FormatMachineDate(DateTimeOffset occurredAt)
     {
-        return publishedAt?.ToLocalTime().ToString("MM月dd日") ?? "草稿";
-    }
-
-    private static string FormatMachineDate(DateTimeOffset? publishedAt)
-    {
-        return publishedAt?.ToString("yyyy-MM-dd") ?? string.Empty;
+        return occurredAt.ToString("O");
     }
 }

@@ -6,6 +6,8 @@
   <Project Path="src/Zero72.Blog.Components/Zero72.Blog.Components.csproj" />
   <Project Path="src/Zero72.Blog.Domain/Zero72.Blog.Domain.csproj" />
   <Project Path="src/Zero72.Blog.Infrastructure/Zero72.Blog.Infrastructure.csproj" />
+  <Project Path="src/Zero72.Blog.Mobile/Zero72.Blog.Mobile.csproj" />
   <Project Path="src/Zero72.Blog.Reading/Zero72.Blog.Reading.csproj" />
   <Project Path="src/Zero72.Blog.Shared/Zero72.Blog.Shared.csproj" />
+  <Project Path="tools/Zero72.Blog.Deployer/Zero72.Blog.Deployer.csproj" />
 </Solution>

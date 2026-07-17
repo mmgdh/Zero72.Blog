@@ -10,7 +10,9 @@ public static partial class AdminBlogPostEndpoints
 {
     public static IEndpointRouteBuilder MapAdminBlogPostEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/posts").WithTags("Admin Posts");
+        var group = app.MapGroup("/api/admin/posts")
+            .WithTags("Admin Posts")
+            .RequireAuthorization();
 
         group.MapGet("/", async (BlogDbContext dbContext, CancellationToken cancellationToken) =>
         {

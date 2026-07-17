@@ -22,6 +22,8 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__BlogDb: Host=postgres;Port=5432;Database=zero72_blog;Username=zero72;Password=zero72_dev_password
+      AdminAuth__UserName: admin
+      AdminAuth__Password: zero72_dev_admin
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,6 +38,8 @@ services:
       dockerfile: src/Zero72.Blog.Client/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
+      Hosting__Mode: Server
+      Proxy__ApiBaseUrl: http://api:8080
     depends_on:
       - api
     ports:
@@ -47,6 +51,7 @@ services:
       dockerfile: src/Zero72.Blog.Admin/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
+      Hosting__Mode: Static
     depends_on:
       - api
     ports:

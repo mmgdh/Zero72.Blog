@@ -54,6 +54,42 @@ partial class BlogDbContextModelSnapshot : ModelSnapshot
             entity.ToTable("blog_posts");
         });
 
+        modelBuilder.Entity("Zero72.Blog.Domain.ThoughtEntry", entity =>
+        {
+            entity.Property<Guid>("Id")
+                .ValueGeneratedOnAdd()
+                .HasColumnType("uuid");
+
+            entity.Property<string>("Content")
+                .IsRequired()
+                .HasMaxLength(2000)
+                .HasColumnType("character varying(2000)");
+
+            entity.Property<DateTimeOffset>("CreatedAt")
+                .HasColumnType("timestamp with time zone");
+
+            entity.Property<string>("ImageUrl")
+                .HasMaxLength(500)
+                .HasColumnType("character varying(500)");
+
+            entity.Property<bool>("IsPublished")
+                .HasColumnType("boolean");
+
+            entity.Property<DateTimeOffset>("OccurredAt")
+                .HasColumnType("timestamp with time zone");
+
+            entity.Property<DateTimeOffset>("UpdatedAt")
+                .HasColumnType("timestamp with time zone");
+
+            entity.HasKey("Id");
+
+            entity.HasIndex("IsPublished");
+
+            entity.HasIndex("OccurredAt");
+
+            entity.ToTable("thought_entries");
+        });
+
         modelBuilder.Entity("Zero72.Blog.Reading.ReadingBookEntity", entity =>
         {
             entity.Property<Guid>("Id")

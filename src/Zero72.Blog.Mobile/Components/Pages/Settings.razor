@@ -1,0 +1,99 @@
+@page "/settings"
+@inject MobileSettingsService MobileSettings
+@inject BlogApiClient Api
+@inject SessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>设置 · Zero72 博客助手</PageTitle>
+
+<section class="page">
+    <header class="page-heading">
+        <p class="eyebrow">连接与账号</p>
+        <h1>设置</h1>
+        <p>服务器地址应指向可在手机访问的博客公开地址。</p>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(message))
+    {
+        <div class="alert @(isError ? "error" : "success")">@message</div>
+    }
+
+    <section class="panel form-stack">
+        <label class="field">
+            <span>博客服务器地址</span>
+            <input inputmode="url" @bind="baseUrl" placeholder="http://47.114.74.197:8080/" />
+            <small>修改后需要重新登录；当前服务器使用 HTTP，建议后续配置 HTTPS。</small>
+        </label>
+        <button class="primary" @onclick="SaveAsync">保存并测试连接</button>
+    </section>
+
+    <section class="panel">
+        <div class="section-title">
+            <div><h2>当前账号</h2><p>@(Session.IsAuthenticated ? Session.UserName : "尚未登录")</p></div>
+        </div>
+        @if (Session.IsAuthenticated)
+        {
+            <button class="secondary" @onclick="LogoutAsync">退出登录</button>
+        }
+        else
+        {
+            <NavLink class="button-link primary" href="/login">前往登录</NavLink>
+        }
+    </section>
+
+    <section class="panel subtle-panel">
+        <h2>安全说明</h2>
+        <p>应用不会保存密码。登录状态由系统内存中的 Cookie 维持，应用进程结束后需要重新登录。</p>
+    </section>
+</section>
+
+@code {
+    private string baseUrl = string.Empty;
+    private string? message;
+    private bool isError;
+
+    /// <summary>
+    /// 读取当前保存的服务器地址。
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        baseUrl = MobileSettings.GetBaseUri().AbsoluteUri;
+    }
+
+    /// <summary>
+    /// 校验并保存服务器地址，然后通过认证状态接口测试连通性。
+    /// </summary>
+    private async Task SaveAsync()
+    {
+        message = null;
+        isError = false;
+        try
+        {
+            MobileSettings.SaveBaseUrl(baseUrl);
+            baseUrl = MobileSettings.GetBaseUri().AbsoluteUri;
+            Session.Update(false, null);
+            await Api.GetStatusAsync();
+            message = "服务器连接正常，请重新登录。";
+        }
+        catch (Exception exception)
+        {
+            isError = true;
+            message = $"连接失败：{exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 注销服务端会话并返回登录页。
+    /// </summary>
+    private async Task LogoutAsync()
+    {
+        try
+        {
+            await Api.LogoutAsync();
+        }
+        finally
+        {
+            Navigation.NavigateTo("/login", replace: true);
+        }
+    }
+}

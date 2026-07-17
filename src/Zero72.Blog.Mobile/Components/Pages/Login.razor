@@ -1,0 +1,111 @@
+@page "/login"
+@inject BlogApiClient Api
+@inject MobileSettingsService MobileSettings
+@inject SessionState Session
+@inject NavigationManager Navigation
+
+<PageTitle>登录 · Zero72 博客助手</PageTitle>
+
+<main class="login-page">
+    <section class="login-card">
+        <div class="login-logo">72</div>
+        <p class="eyebrow">Zero72 Blog Companion</p>
+        <h1>登录博客助手</h1>
+        <p class="muted">使用网页管理后台的同一组账号。</p>
+
+        @if (serverIsInsecure)
+        {
+            <div class="alert error">当前服务器使用 HTTP，账号、密码和登录会话没有 TLS 加密。请避免在不可信网络中登录，并尽快为博客配置 HTTPS。</div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert error">@errorMessage</div>
+        }
+
+        <form @onsubmit="LoginAsync" @onsubmit:preventDefault>
+            <label class="field">
+                <span>管理员账号</span>
+                <input autocomplete="username" @bind="userName" placeholder="请输入账号" />
+            </label>
+            <label class="field">
+                <span>密码</span>
+                <input type="password" autocomplete="current-password" @bind="password" placeholder="请输入密码" />
+            </label>
+            <button class="primary wide" type="submit" disabled="@isSubmitting">
+                @(isSubmitting ? "正在登录…" : "登录")
+            </button>
+        </form>
+
+        <p class="server-hint">服务器：@serverAddress</p>
+        <NavLink class="text-link" href="/settings">修改服务器地址</NavLink>
+    </section>
+</main>
+
+@code {
+    private string userName = string.Empty;
+    private string password = string.Empty;
+    private string serverAddress = string.Empty;
+    private string? errorMessage;
+    private bool isSubmitting;
+    private bool serverIsInsecure;
+
+    /// <summary>
+    /// 载入已保存的账号和服务器地址，并尝试恢复现有会话。
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        userName = MobileSettings.GetUserName();
+        var serverUri = MobileSettings.GetBaseUri();
+        serverAddress = serverUri.AbsoluteUri;
+        serverIsInsecure = serverUri.Scheme == Uri.UriSchemeHttp;
+
+        try
+        {
+            var status = await Api.GetStatusAsync();
+            if (status.IsAuthenticated)
+            {
+                Navigation.NavigateTo("/", replace: true);
+            }
+        }
+        catch
+        {
+            // 登录页允许服务器暂时不可达，具体错误在用户提交登录时显示。
+        }
+    }
+
+    /// <summary>
+    /// 提交管理员凭据，登录成功后只保存账号而不保存密码。
+    /// </summary>
+    private async Task LoginAsync()
+    {
+        if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(password))
+        {
+            errorMessage = "请输入管理员账号和密码。";
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            if (!await Api.LoginAsync(userName.Trim(), password))
+            {
+                errorMessage = "账号或密码不正确，或尝试次数过多。";
+                return;
+            }
+
+            MobileSettings.SaveUserName(userName.Trim());
+            password = string.Empty;
+            Navigation.NavigateTo("/", replace: true);
+        }
+        catch (Exception exception)
+        {
+            errorMessage = $"无法登录：{exception.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

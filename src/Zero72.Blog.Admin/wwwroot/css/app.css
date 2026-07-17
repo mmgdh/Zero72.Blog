@@ -85,6 +85,33 @@ textarea {
     color: #fff;
 }
 
+.admin-session {
+    border-top: 1px solid rgba(255, 255, 255, .12);
+    display: grid;
+    gap: .65rem;
+    margin-top: auto;
+    padding-top: 1rem;
+}
+
+.admin-session span {
+    color: #d7dce6;
+    font-size: .86rem;
+    font-weight: 700;
+}
+
+.admin-session button {
+    background: rgba(255, 255, 255, .08);
+    border: 1px solid rgba(255, 255, 255, .14);
+    border-radius: 8px;
+    color: #fff;
+    cursor: pointer;
+    min-height: 36px;
+}
+
+.admin-session button:hover {
+    background: rgba(255, 255, 255, .14);
+}
+
 .admin-main {
     min-width: 0;
     padding: 1.5rem;
@@ -444,6 +471,97 @@ mark.draft {
 .boot-panel {
     color: var(--muted);
     padding: 2rem;
+}
+
+.auth-shell {
+    align-items: center;
+    background:
+        radial-gradient(circle at 15% 20%, rgba(37, 99, 235, .12), transparent 28rem),
+        var(--bg);
+    display: grid;
+    min-height: 100vh;
+    padding: 1rem;
+    place-items: center;
+}
+
+.login-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    display: grid;
+    gap: 1.25rem;
+    max-width: 420px;
+    padding: 1.5rem;
+    width: min(100%, 420px);
+}
+
+.login-heading {
+    align-items: center;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: auto 1fr;
+}
+
+.login-heading > span {
+    align-items: center;
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    color: var(--accent);
+    display: inline-flex;
+    font-weight: 900;
+    height: 44px;
+    justify-content: center;
+    width: 44px;
+}
+
+.login-heading h1,
+.login-heading p {
+    margin: 0;
+}
+
+.login-heading p {
+    color: var(--muted);
+    line-height: 1.55;
+    margin-top: .25rem;
+}
+
+.login-form {
+    display: grid;
+    gap: 1rem;
+}
+
+.login-form label {
+    display: grid;
+    gap: .45rem;
+}
+
+.login-form label span {
+    color: var(--muted);
+    font-size: .86rem;
+    font-weight: 700;
+}
+
+.login-form input {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    min-height: 42px;
+    padding: .65rem .75rem;
+}
+
+.login-form input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+    outline: none;
+}
+
+.login-error {
+    background: var(--danger-bg);
+    border-radius: 8px;
+    color: var(--danger);
+    margin: 0;
+    padding: .75rem;
 }
 
 #blazor-error-ui {

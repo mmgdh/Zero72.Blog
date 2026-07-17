@@ -1,0 +1,8 @@
+﻿<maui:MauiWinUIApplication
+    x:Class="Zero72.Blog.Mobile.WinUI.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:maui="using:Microsoft.Maui"
+    xmlns:local="using:Zero72.Blog.Mobile.WinUI">
+
+</maui:MauiWinUIApplication>

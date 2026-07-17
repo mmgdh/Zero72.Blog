@@ -1,0 +1,206 @@
+@page "/thoughts"
+@inherits AuthenticatedPageBase
+@inject IJSRuntime JavaScript
+
+<PageTitle>临时感悟 · Zero72 博客助手</PageTitle>
+
+<section class="page">
+    <header class="page-heading heading-row">
+        <div><p class="eyebrow">Quick Thoughts</p><h1>临时感悟</h1><p>捕捉此刻的想法，可立即公开或暂存草稿。</p></div>
+        <button class="primary compact" @onclick="StartCreate">＋ 写一条</button>
+    </header>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage)) { <div class="alert error">@errorMessage</div> }
+    @if (!string.IsNullOrWhiteSpace(successMessage)) { <div class="alert success">@successMessage</div> }
+
+    @if (showEditor)
+    {
+        <section class="panel editor-panel">
+            <div class="section-title"><h2>@(editingId is null ? "写下此刻" : "编辑感悟")</h2></div>
+            <div class="form-stack">
+                <label class="field"><span>内容</span><textarea rows="8" maxlength="2000" @bind="content" placeholder="此刻在想什么？"></textarea><small>@content.Length / 2000</small></label>
+                <label class="field"><span>发生时间</span><input type="datetime-local" @bind="occurredAt" /></label>
+                <label class="toggle-row"><input type="checkbox" @bind="isPublished" /><span><strong>公开显示</strong><small>关闭时仅保存在后台草稿中</small></span></label>
+                <label class="field">
+                    <span>配图（可选）</span>
+                    <InputFile OnChange="UploadImageAsync" accept="image/jpeg,image/png,image/webp,image/gif" />
+                    <small>可以直接调用手机拍照或从相册选择，最大 5 MB。</small>
+                </label>
+                @if (!string.IsNullOrWhiteSpace(imageUrl))
+                {
+                    <div class="thought-image-preview"><img src="@Api.ToPublicUrl(imageUrl)" alt="感悟配图预览" /><button class="text-button danger-text" @onclick="RemoveImage">移除图片</button></div>
+                }
+                <div class="button-row">
+                    <button class="primary" disabled="@isSaving" @onclick="SaveAsync">@(isSaving ? "正在同步…" : "保存感悟")</button>
+                    <button class="secondary" @onclick="CancelEdit">取消</button>
+                </div>
+            </div>
+        </section>
+    }
+
+    @if (isLoading)
+    {
+        <div class="loading-card">正在读取感悟…</div>
+    }
+    else if (thoughts.Count == 0)
+    {
+        <div class="empty-state"><strong>还没有临时感悟</strong><p>想到什么，就从一句话开始。</p></div>
+    }
+    else
+    {
+        <div class="item-list">
+            @foreach (var thought in thoughts.OrderByDescending(item => item.OccurredAt))
+            {
+                <article class="item-card thought-card">
+                    <div class="item-topline">
+                        <time>@thought.OccurredAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm")</time>
+                        <span class="chip @(thought.IsPublished ? "published" : "draft")">@(thought.IsPublished ? "已公开" : "草稿")</span>
+                    </div>
+                    <p class="thought-content">@thought.Content</p>
+                    @if (!string.IsNullOrWhiteSpace(thought.ImageUrl))
+                    {
+                        <img class="thought-image" src="@Api.ToPublicUrl(thought.ImageUrl)" alt="感悟配图" />
+                    }
+                    <div class="card-actions">
+                        <button class="text-button" @onclick="() => Edit(thought)">编辑</button>
+                        <button class="text-button danger-text" @onclick="() => DeleteAsync(thought)">删除</button>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private const long MaxUploadBytes = 5 * 1024 * 1024;
+    private readonly List<ThoughtItem> thoughts = [];
+    private Guid? editingId;
+    private string content = string.Empty;
+    private DateTime occurredAt = DateTime.Now;
+    private string? imageUrl;
+    private bool isPublished = true;
+    private bool isLoading = true;
+    private bool isSaving;
+    private bool showEditor;
+    private string? errorMessage;
+    private string? successMessage;
+
+    /// <summary>
+    /// 验证身份并载入全部公开及草稿感悟。
+    /// </summary>
+    protected override async Task OnInitializedAsync()
+    {
+        if (!await EnsureAuthenticatedAsync()) return;
+        await ReloadAsync();
+        if (Navigation.Uri.Contains("new=1", StringComparison.OrdinalIgnoreCase)) StartCreate();
+    }
+
+    /// <summary>
+    /// 从服务器刷新感悟列表。
+    /// </summary>
+    private async Task ReloadAsync()
+    {
+        isLoading = true;
+        try
+        {
+            thoughts.Clear();
+            thoughts.AddRange(await Api.GetThoughtsAsync());
+        }
+        catch (Exception exception) { errorMessage = exception.Message; }
+        finally { isLoading = false; }
+    }
+
+    /// <summary>
+    /// 重置表单并进入新增模式。
+    /// </summary>
+    private void StartCreate()
+    {
+        editingId = null;
+        content = string.Empty;
+        occurredAt = DateTime.Now;
+        imageUrl = null;
+        isPublished = true;
+        showEditor = true;
+        successMessage = null;
+    }
+
+    /// <summary>
+    /// 将已有感悟填入编辑器。
+    /// </summary>
+    private void Edit(ThoughtItem thought)
+    {
+        editingId = thought.Id;
+        content = thought.Content;
+        occurredAt = thought.OccurredAt.ToLocalTime().DateTime;
+        imageUrl = thought.ImageUrl;
+        isPublished = thought.IsPublished;
+        showEditor = true;
+    }
+
+    /// <summary>
+    /// 上传配图并保存服务器返回的相对地址。
+    /// </summary>
+    private async Task UploadImageAsync(InputFileChangeEventArgs eventArgs)
+    {
+        errorMessage = null;
+        try
+        {
+            var file = eventArgs.File;
+            await using var stream = file.OpenReadStream(MaxUploadBytes);
+            imageUrl = (await Api.UploadImageAsync(stream, file.Name, file.ContentType)).Url;
+        }
+        catch (Exception exception) { errorMessage = $"图片上传失败：{exception.Message}"; }
+    }
+
+    /// <summary>
+    /// 校验时间与内容并把感悟同步到博客。
+    /// </summary>
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            errorMessage = "请填写感悟内容和有效时间。";
+            return;
+        }
+
+        isSaving = true;
+        errorMessage = null;
+        try
+        {
+            var occurredAtOffset = new DateTimeOffset(
+                occurredAt,
+                TimeZoneInfo.Local.GetUtcOffset(occurredAt)).ToUniversalTime();
+            await Api.SaveThoughtAsync(editingId, new SaveThoughtRequest(content.Trim(), occurredAtOffset, imageUrl, isPublished));
+            showEditor = false;
+            successMessage = isPublished ? "感悟已公开同步到博客。" : "感悟已保存为草稿。";
+            await ReloadAsync();
+        }
+        catch (Exception exception) { errorMessage = exception.Message; }
+        finally { isSaving = false; }
+    }
+
+    /// <summary>
+    /// 二次确认后删除感悟。
+    /// </summary>
+    private async Task DeleteAsync(ThoughtItem thought)
+    {
+        if (!await JavaScript.InvokeAsync<bool>("confirm", "确认删除这条感悟吗？")) return;
+        try
+        {
+            await Api.DeleteThoughtAsync(thought.Id);
+            successMessage = "感悟已删除。";
+            await ReloadAsync();
+        }
+        catch (Exception exception) { errorMessage = exception.Message; }
+    }
+
+    /// <summary>
+    /// 移除当前表单中的配图引用。
+    /// </summary>
+    private void RemoveImage() => imageUrl = null;
+
+    /// <summary>
+    /// 关闭编辑器。
+    /// </summary>
+    private void CancelEdit() => showEditor = false;
+}

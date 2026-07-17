@@ -1,0 +1,85 @@
+@page "/login"
+@layout AuthLayout
+@inject AdminAuthClient Auth
+@inject NavigationManager Navigation
+
+<PageTitle>登录 - Zero72 后台</PageTitle>
+
+<section class="login-card">
+    <div class="login-heading">
+        <span>Z</span>
+        <div>
+            <h1>登录后台</h1>
+            <p>请输入管理员账号继续维护博客内容。</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <p class="login-error">@errorMessage</p>
+    }
+
+    <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
+        <label>
+            <span>用户名</span>
+            <input autocomplete="username" @bind="userName" />
+        </label>
+
+        <label>
+            <span>密码</span>
+            <input autocomplete="current-password" type="password" @bind="password" />
+        </label>
+
+        <button class="button-primary" type="submit" disabled="@isSubmitting">
+            @(isSubmitting ? "正在登录..." : "登录")
+        </button>
+    </form>
+</section>
+
+@code {
+    private bool isSubmitting;
+    private string userName = "admin";
+    private string password = string.Empty;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var status = await Auth.GetStatusAsync();
+        if (status.IsAuthenticated)
+        {
+            Navigation.NavigateTo("");
+        }
+    }
+
+    private async Task LoginAsync()
+    {
+        errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(userName) || string.IsNullOrWhiteSpace(password))
+        {
+            errorMessage = "请输入用户名和密码。";
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var status = await Auth.LoginAsync(userName.Trim(), password);
+            if (status?.IsAuthenticated == true)
+            {
+                Navigation.NavigateTo("");
+                return;
+            }
+
+            errorMessage = "用户名或密码不正确，或尝试次数过多。";
+        }
+        catch (Exception)
+        {
+            errorMessage = "登录失败，请稍后重试。";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

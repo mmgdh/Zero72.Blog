@@ -1,0 +1,50 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SessionState Session
+
+<div class="app-shell">
+    <header class="app-header">
+        <NavLink href="/" class="brand" Match="NavLinkMatch.All">
+            <span class="brand-mark">72</span>
+            <span>
+                <strong>博客助手</strong>
+                <small>@(Session.IsAuthenticated ? Session.UserName : "移动工作台")</small>
+            </span>
+        </NavLink>
+    </header>
+
+    <main class="app-content">
+        @Body
+    </main>
+
+    @if (Session.IsAuthenticated)
+    {
+        <nav class="bottom-nav" aria-label="主要导航">
+            <NavLink href="/" Match="NavLinkMatch.All"><span>⌂</span><small>概览</small></NavLink>
+            <NavLink href="/reading"><span>读</span><small>阅读</small></NavLink>
+            <NavLink href="/books"><span>书</span><small>图书</small></NavLink>
+            <NavLink href="/thoughts"><span>想</span><small>感悟</small></NavLink>
+            <NavLink href="/settings"><span>设</span><small>设置</small></NavLink>
+        </nav>
+    }
+</div>
+
+@code {
+    // 订阅会话变化，使登录和退出后导航立即刷新。
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+    }
+
+    // 将会话变化切换回 Blazor 渲染上下文。
+    private void OnSessionChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    // 页面销毁时取消订阅，避免布局实例被长期引用。
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+    }
+}

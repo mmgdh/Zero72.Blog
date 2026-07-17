@@ -1,20 +1,59 @@
 @inherits LayoutComponentBase
+@inject AdminAuthClient Auth
+@inject NavigationManager Navigation
 
-<div class="admin-shell">
-    <aside class="admin-sidebar">
-        <NavLink class="brand" href="" Match="NavLinkMatch.All">
-            <span>Zero72</span>
-            <small>博客后台</small>
-        </NavLink>
+@if (isChecking)
+{
+    <main class="boot-panel">正在验证登录状态...</main>
+}
+else if (isAuthenticated)
+{
+    <div class="admin-shell">
+        <aside class="admin-sidebar">
+            <NavLink class="brand" href="" Match="NavLinkMatch.All">
+                <span>Zero72</span>
+                <small>博客后台</small>
+            </NavLink>
 
-        <nav>
-            <NavLink href="" Match="NavLinkMatch.All">文章</NavLink>
-            <NavLink href="posts/new">写作</NavLink>
-            <NavLink href="reading">阅读管理</NavLink>
-        </nav>
-    </aside>
+            <nav>
+                <NavLink href="" Match="NavLinkMatch.All">文章</NavLink>
+                <NavLink href="posts/new">写作</NavLink>
+                <NavLink href="reading">阅读管理</NavLink>
+            </nav>
 
-    <main class="admin-main">
-        @Body
-    </main>
-</div>
+            <div class="admin-session">
+                <span>@userName</span>
+                <button type="button" @onclick="LogoutAsync">退出登录</button>
+            </div>
+        </aside>
+
+        <main class="admin-main">
+            @Body
+        </main>
+    </div>
+}
+
+@code {
+    private bool isChecking = true;
+    private bool isAuthenticated;
+    private string userName = "admin";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var status = await Auth.GetStatusAsync();
+        isAuthenticated = status.IsAuthenticated;
+        userName = status.UserName ?? "admin";
+        isChecking = false;
+
+        if (!isAuthenticated)
+        {
+            Navigation.NavigateTo("login", replace: true);
+        }
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Navigation.NavigateTo("login", forceLoad: true);
+    }
+}

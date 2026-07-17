@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="@Assets["css/app.css"]" />
+    <link rel="icon" type="image/png" href="@Assets["favicon.png"]" />
+    <link href="@Assets["Zero72.Blog.ClientHost.styles.css"]" rel="stylesheet" />
+    <script src="@Assets["js/theme.js"]"></script>
+    <HeadOutlet />
+</head>
+
+<body>
+    <Router AppAssembly="@typeof(Zero72.Blog.Client.App).Assembly" NotFoundPage="typeof(NotFound)">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+            <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+        </Found>
+    </Router>
+
+    <div id="blazor-error-ui">
+        页面连接已中断。
+        <a href="." class="reload">重新加载</a>
+        <span class="dismiss">×</span>
+    </div>
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+</body>
+
+</html>

@@ -38,7 +38,9 @@ public static class ReadingRecordEndpoints
 
     public static IEndpointRouteBuilder MapAdminReadingBookEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/reading-books").WithTags("Admin Reading Books");
+        var group = app.MapGroup("/api/admin/reading-books")
+            .WithTags("Admin Reading Books")
+            .RequireAuthorization();
 
         group.MapGet("/", (IReadingLibraryStore store) =>
         {
@@ -87,7 +89,9 @@ public static class ReadingRecordEndpoints
 
     public static IEndpointRouteBuilder MapAdminReadingRecordEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/admin/reading-records").WithTags("Admin Reading Records");
+        var group = app.MapGroup("/api/admin/reading-records")
+            .WithTags("Admin Reading Records")
+            .RequireAuthorization();
 
         group.MapGet("/", (IReadingLibraryStore store) =>
         {
