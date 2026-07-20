@@ -52,16 +52,16 @@
             @foreach (var book in books)
             {
                 <article class="book-card">
-                    <div class="book-cover" style="--book-tone:@book.CoverTone">
+                    <div class="book-cover" style="--book-tone: @ResolveCoverTone(book.CoverTone);">
                         @if (!string.IsNullOrWhiteSpace(book.CoverImageUrl))
                         {
                             <RemoteImage ImagePath="@book.CoverImageUrl" Alt="@($"{book.Title} 封面")">
-                                <Fallback><span>@book.Title.FirstOrDefault()</span></Fallback>
+                                <Fallback><span class="book-cover-fallback">@book.Title.FirstOrDefault()</span></Fallback>
                             </RemoteImage>
                         }
                         else
                         {
-                            <span>@book.Title.FirstOrDefault()</span>
+                            <span class="book-cover-fallback">@book.Title.FirstOrDefault()</span>
                         }
                     </div>
                     <div class="book-copy"><h2>@book.Title</h2><p>@book.Author</p><small>@book.RecordCount 条记录 · @book.TotalHours.ToString("0.0") 小时</small></div>
@@ -136,7 +136,7 @@
         editingId = book.Id;
         title = book.Title;
         author = book.Author;
-        coverTone = book.CoverTone;
+        coverTone = ResolveCoverTone(book.CoverTone);
         coverImageUrl = book.CoverImageUrl;
         showEditor = true;
     }
@@ -204,4 +204,29 @@
     /// 关闭编辑器。
     /// </summary>
     private void CancelEdit() => showEditor = false;
+
+    /// <summary>
+    /// 将网页端使用的命名主题或有效十六进制颜色转换为移动端封面可直接使用的颜色。
+    /// </summary>
+    private static string ResolveCoverTone(string? tone)
+    {
+        var normalized = tone?.Trim().ToLowerInvariant();
+        if (normalized?.Length == 7 &&
+            normalized[0] == '#' &&
+            int.TryParse(normalized[1..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _))
+        {
+            return normalized;
+        }
+
+        return normalized switch
+        {
+            "midnight" => "#111827",
+            "paper" => "#f8fafc",
+            "linen" => "#f1ede4",
+            "cosmos" => "#172554",
+            "sparrow" => "#fef3c7",
+            "ocean" => "#1d4ed8",
+            _ => "#2563eb"
+        };
+    }
 }

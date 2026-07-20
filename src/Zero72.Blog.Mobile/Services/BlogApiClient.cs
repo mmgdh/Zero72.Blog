@@ -13,24 +13,31 @@ namespace Zero72.Blog.Mobile.Services;
 /// </summary>
 public sealed class BlogApiClient : IDisposable
 {
+    private const int MaxImageBytes = 5 * 1024 * 1024;
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly MobileSettingsService settings;
     private readonly SessionState session;
+    private readonly AppLogService logs;
     private readonly HttpClient httpClient;
 
     /// <summary>
     /// 创建启用 Cookie 的原生 HTTP 客户端。
     /// </summary>
-    public BlogApiClient(MobileSettingsService settings, SessionState session)
+    public BlogApiClient(
+        MobileSettingsService settings,
+        SessionState session,
+        AppLogService logs)
     {
         this.settings = settings;
         this.session = session;
+        this.logs = logs;
         var handler = new HttpClientHandler
         {
             CookieContainer = new CookieContainer(),
             UseCookies = true,
             AutomaticDecompression = DecompressionMethods.All
         };
-        httpClient = new HttpClient(handler)
+        httpClient = new HttpClient(new ApiLoggingHandler(logs, handler))
         {
             Timeout = TimeSpan.FromSeconds(45)
         };
@@ -95,17 +102,39 @@ public sealed class BlogApiClient : IDisposable
         CancellationToken cancellationToken = default)
     {
         var cacheBuster = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        using var response = await SendAsync(
+        using var request = new HttpRequestMessage(
             HttpMethod.Get,
-            $"mobile/latest.json?v={cacheBuster}",
-            cancellationToken);
+            BuildUri($"mobile/latest.json?v={cacheBuster}"));
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.AcceptEncoding.ParseAdd("identity");
+        request.Headers.CacheControl = new CacheControlHeaderValue
+        {
+            NoCache = true,
+            NoStore = true
+        };
+        using var response = await httpClient.SendAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
             return null;
         }
 
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<MobileReleaseInfo>(cancellationToken);
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            throw new BlogApiException(
+                "更新服务器返回了空的版本清单。请先完整发布一次博客服务，再重新检查更新。");
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<MobileReleaseInfo>(content, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            var preview = content.Length <= 160 ? content : $"{content[..160]}…";
+            throw new BlogApiException($"更新服务器返回了无效的版本清单：{preview}");
+        }
     }
 
     /// <summary>
@@ -240,10 +269,19 @@ public sealed class BlogApiClient : IDisposable
             return null;
         }
 
+        var normalizedPath = path.Trim();
         var baseUri = settings.GetBaseUri();
-        if (!Uri.TryCreate(path.Trim(), UriKind.Absolute, out var absolute))
+        if (normalizedPath.StartsWith("//", StringComparison.Ordinal))
         {
-            return new Uri(baseUri, path.Trim().TrimStart('/')).AbsoluteUri;
+            return null;
+        }
+
+        // Uri.TryCreate 会把“/uploads/...”识别为 file:// 绝对地址，因此必须先处理站点根相对路径。
+        if (normalizedPath.StartsWith("/", StringComparison.Ordinal) ||
+            !Uri.TryCreate(normalizedPath, UriKind.Absolute, out var absolute))
+        {
+            var serverRoot = new Uri($"{baseUri.Scheme}://{baseUri.Authority}/");
+            return new Uri(serverRoot, normalizedPath.TrimStart('/')).AbsoluteUri;
         }
 
         var isHttp = absolute.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
@@ -251,6 +289,78 @@ public sealed class BlogApiClient : IDisposable
         var isCurrentServer = absolute.Host.Equals(baseUri.Host, StringComparison.OrdinalIgnoreCase) &&
             absolute.Port == baseUri.Port;
         return isHttp && isCurrentServer ? absolute.AbsoluteUri : null;
+    }
+
+    /// <summary>
+    /// 通过原生 HTTP 获取图片并生成 WebView 可直接解码的内嵌 Data URL。
+    /// 该链路绕开 Android WebView 对外部 HTTP 子资源的限制，同时记录文件类型和文件头诊断。
+    /// </summary>
+    public async Task<string> GetImageDataUrlAsync(
+        string imagePath,
+        CancellationToken cancellationToken = default)
+    {
+        var publicUrl = ToPublicUrl(imagePath);
+        if (publicUrl is null)
+        {
+            throw new BlogApiException($"图片地址无效或不属于当前服务器：{imagePath}");
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, publicUrl);
+            request.Headers.Accept.ParseAdd("image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8");
+            using var response = await httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+            await EnsureSuccessAsync(response, cancellationToken).ConfigureAwait(false);
+
+            var declaredLength = response.Content.Headers.ContentLength;
+            if (declaredLength > MaxImageBytes)
+            {
+                throw new BlogApiException("图片超过 5 MB，无法在移动端显示。");
+            }
+
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            if (bytes.Length == 0)
+            {
+                throw new BlogApiException("图片服务器返回了空文件。");
+            }
+
+            if (bytes.Length > MaxImageBytes)
+            {
+                throw new BlogApiException("图片超过 5 MB，无法在移动端显示。");
+            }
+
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            if (string.IsNullOrWhiteSpace(contentType) ||
+                !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BlogApiException($"服务器返回的内容不是图片，Content-Type：{contentType ?? "（空）"}。");
+            }
+
+            var headerLength = Math.Min(32, bytes.Length);
+            var header = bytes.AsSpan(0, headerLength);
+            var format = DetectImageFormat(header);
+            var hexadecimalHeader = Convert.ToHexString(header);
+            await logs.InfoAsync(
+                "图片诊断",
+                $"原生读取成功：{publicUrl}；类型 {contentType}；长度 {bytes.Length}；识别格式 {format}；前 {headerLength} 字节 {hexadecimalHeader}；将以内嵌 Data URL 显示。")
+                .ConfigureAwait(false);
+
+            if (format == "未知")
+            {
+                await logs.WarningAsync("图片诊断", "响应的文件头不是常见图片格式，WebView 可能无法解码。").ConfigureAwait(false);
+            }
+
+            return $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch (Exception exception)
+        {
+            await logs.ErrorAsync("图片诊断", $"读取图片异常：{publicUrl}；{exception.GetType().Name}：{exception.Message}")
+                .ConfigureAwait(false);
+            throw;
+        }
     }
 
     /// <summary>
@@ -327,6 +437,50 @@ public sealed class BlogApiClient : IDisposable
     private Uri BuildUri(string path)
     {
         return new Uri(settings.GetBaseUri(), path.TrimStart('/'));
+    }
+
+    /// <summary>
+    /// 根据文件头识别常见网络图片格式。
+    /// </summary>
+    private static string DetectImageFormat(ReadOnlySpan<byte> header)
+    {
+        if (header.Length >= 3 && header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF)
+        {
+            return "JPEG";
+        }
+
+        if (header.Length >= 8 &&
+            header[0] == 0x89 &&
+            header[1] == 0x50 &&
+            header[2] == 0x4E &&
+            header[3] == 0x47 &&
+            header[4] == 0x0D &&
+            header[5] == 0x0A &&
+            header[6] == 0x1A &&
+            header[7] == 0x0A)
+        {
+            return "PNG";
+        }
+
+        if (header.Length >= 12 &&
+            header[..4].SequenceEqual("RIFF"u8) &&
+            header.Slice(8, 4).SequenceEqual("WEBP"u8))
+        {
+            return "WebP";
+        }
+
+        if (header.Length >= 6 &&
+            (header[..6].SequenceEqual("GIF87a"u8) || header[..6].SequenceEqual("GIF89a"u8)))
+        {
+            return "GIF";
+        }
+
+        if (header.Length >= 12 && header.Slice(4, 8).SequenceEqual("ftypavif"u8))
+        {
+            return "AVIF";
+        }
+
+        return "未知";
     }
 
     /// <summary>

@@ -26,6 +26,7 @@ public static class MauiProgram
             });
 
         builder.Services.AddMauiBlazorWebView();
+        builder.Services.AddSingleton<AppLogService>();
         builder.Services.AddSingleton<MobileSettingsService>();
         builder.Services.AddSingleton<SessionState>();
         builder.Services.AddSingleton<BlogApiClient>();

@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 安卓升级文件由物理目录中间件提供，避免静态资源端点参与压缩协商。 -->
+    <StaticWebAssetEndpointExclusionPattern>/mobile/**</StaticWebAssetEndpointExclusionPattern>
   </PropertyGroup>
 
   <ItemGroup>

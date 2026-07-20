@@ -50,6 +50,13 @@ contentTypeProvider.Mappings[".apk"] = "application/vnd.android.package-archive"
 
 app.Use(async (context, next) =>
 {
+    if (context.Request.Path.StartsWithSegments("/mobile"))
+    {
+        // MapStaticAssets 在部分 Accept-Encoding 组合下会把小型 JSON 清单返回为空正文。
+        // 安卓升级文件不需要压缩，因此在进入响应压缩中间件前强制使用原始传输。
+        context.Request.Headers.Remove("Accept-Encoding");
+    }
+
     context.Response.OnStarting(() =>
     {
         ApplySecurityHeaders(context.Response);
@@ -74,16 +81,8 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseResponseCompression();
-
-if (useServerRendering)
-{
-    app.UseAntiforgery();
-}
-
-app.MapApiProxy(builder.Configuration);
-
 // 安卓升级文件由独立物理目录提供，允许运行中的容器接收新 APK，无需重新构建博客镜像。
+// 该中间件必须位于响应压缩之前，避免小型 JSON 清单在部分压缩协商下被错误返回为空正文。
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(mobileRoot),
@@ -101,6 +100,15 @@ app.UseStaticFiles(new StaticFileOptions
         ApplyNoStore(context.Context.Response);
     }
 });
+
+app.UseResponseCompression();
+
+if (useServerRendering)
+{
+    app.UseAntiforgery();
+}
+
+app.MapApiProxy(builder.Configuration);
 
 if (!useServerRendering)
 {

@@ -1,8 +1,9 @@
 @inject BlogApiClient Api
+@inject AppLogService Logs
 
 @if (!hasError && !string.IsNullOrWhiteSpace(resolvedSource))
 {
-    <img class="@Class" src="@resolvedSource" alt="@Alt" loading="@(Lazy ? "lazy" : "eager")" @onerror="HandleError" />
+    <img @key="resolvedSource" class="@Class" src="@resolvedSource" alt="@Alt" loading="@(Lazy ? "lazy" : "eager")" @onload="HandleLoadedAsync" @onerror="HandleErrorAsync" />
 }
 else if (Fallback is not null)
 {
@@ -15,8 +16,10 @@ else if (hasError)
 
 @code {
     private string? loadedPath;
+    private string? publicUrl;
     private string? resolvedSource;
     private bool hasError;
+    private int loadVersion;
 
     /// <summary>
     /// 服务器返回的相对或同源绝对图片地址。
@@ -49,9 +52,9 @@ else if (hasError)
     public RenderFragment? Fallback { get; set; }
 
     /// <summary>
-    /// 地址变化时同步生成公开资源地址，由已配置网络策略的 Android WebView 直接加载图片。
+    /// 将网页使用的上传路径直接转换为当前博客服务器上的完整图片地址。
     /// </summary>
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         if (string.Equals(loadedPath, ImagePath, StringComparison.Ordinal))
         {
@@ -59,12 +62,54 @@ else if (hasError)
         }
 
         loadedPath = ImagePath;
-        resolvedSource = Api.ToPublicUrl(ImagePath);
+        publicUrl = Api.ToPublicUrl(ImagePath);
+        resolvedSource = null;
         hasError = false;
+        var requestedVersion = ++loadVersion;
+        if (publicUrl is null)
+        {
+            await Logs.WarningAsync("图片", $"无法生成公开图片地址，原始值：{ImagePath ?? "（空）"}");
+            return;
+        }
+
+        await Logs.InfoAsync("图片", $"原生客户端准备读取：{publicUrl}");
+        try
+        {
+            var dataUrl = await Api.GetImageDataUrlAsync(publicUrl);
+            if (requestedVersion != loadVersion)
+            {
+                return;
+            }
+
+            resolvedSource = dataUrl;
+        }
+        catch (Exception exception)
+        {
+            if (requestedVersion != loadVersion)
+            {
+                return;
+            }
+
+            hasError = true;
+            await Logs.ErrorAsync("图片", $"原生读取失败：{publicUrl}；{exception.GetType().Name}：{exception.Message}");
+        }
     }
 
     /// <summary>
-    /// 浏览器解码或网络请求失败时移除损坏图片并显示调用方提供的占位内容。
+    /// 记录 WebView 已成功解码并显示远程图片。
     /// </summary>
-    private void HandleError() => hasError = true;
+    private Task HandleLoadedAsync()
+    {
+        return Logs.InfoAsync("图片", $"WebView 已显示内嵌图片：{publicUrl}");
+    }
+
+    /// <summary>
+    /// WebView 无法解码已经由原生客户端读取的内嵌图片时显示占位内容。
+    /// </summary>
+    private async Task HandleErrorAsync()
+    {
+        resolvedSource = null;
+        hasError = true;
+        await Logs.ErrorAsync("图片", $"WebView 无法解码内嵌图片：{publicUrl ?? ImagePath ?? "（空）"}");
+    }
 }

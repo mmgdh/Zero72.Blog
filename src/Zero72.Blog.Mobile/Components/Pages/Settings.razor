@@ -2,8 +2,10 @@
 @inject MobileSettingsService MobileSettings
 @inject BlogApiClient Api
 @inject AppUpdateService AppUpdates
+@inject AppLogService Logs
 @inject SessionState Session
 @inject NavigationManager Navigation
+@inject IJSRuntime JavaScript
 
 <PageTitle>设置 · Zero72 博客助手</PageTitle>
 
@@ -51,6 +53,20 @@
 
     <section class="panel">
         <div class="section-title">
+            <div><h2>诊断日志</h2><p>记录应用、API 响应和图片加载结果</p></div>
+            <span class="version-badge">LOG</span>
+        </div>
+        <p class="diagnostic-hint">图片失败后会自动用原生 HTTP 复查同一地址。日志不记录密码、Cookie 或请求正文；复制前仍请留意其中的个人博客内容。</p>
+        <div class="diagnostic-actions">
+            <button class="secondary compact" @onclick="RefreshLogsAsync">刷新日志</button>
+            <button class="secondary compact" @onclick="CopyLogsAsync">复制日志</button>
+            <button class="text-button danger-text" @onclick="ClearLogsAsync">清空</button>
+        </div>
+        <pre class="diagnostic-log">@logContent</pre>
+    </section>
+
+    <section class="panel">
+        <div class="section-title">
             <div><h2>当前账号</h2><p>@(Session.IsAuthenticated ? Session.UserName : "尚未登录")</p></div>
         </div>
         @if (Session.IsAuthenticated)
@@ -75,13 +91,15 @@
     private bool isError;
     private bool isCheckingUpdate;
     private MobileReleaseInfo? availableUpdate;
+    private string logContent = "正在读取日志…";
 
     /// <summary>
     /// 读取当前保存的服务器地址。
     /// </summary>
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         baseUrl = MobileSettings.GetBaseUri().AbsoluteUri;
+        await RefreshLogsAsync();
     }
 
     /// <summary>
@@ -172,5 +190,41 @@
         {
             Navigation.NavigateTo("/login", replace: true);
         }
+    }
+
+    /// <summary>
+    /// 从应用私有日志文件重新读取最近内容。
+    /// </summary>
+    private async Task RefreshLogsAsync()
+    {
+        logContent = await Logs.ReadAsync();
+    }
+
+    /// <summary>
+    /// 将当前完整可见日志复制到系统剪贴板。
+    /// </summary>
+    private async Task CopyLogsAsync()
+    {
+        await RefreshLogsAsync();
+        await Clipboard.Default.SetTextAsync(logContent);
+        isError = false;
+        message = "诊断日志已复制。";
+    }
+
+    /// <summary>
+    /// 用户确认后删除设备上的历史诊断日志。
+    /// </summary>
+    private async Task ClearLogsAsync()
+    {
+        if (!await JavaScript.InvokeAsync<bool>("confirm", "确认清空全部诊断日志吗？"))
+        {
+            return;
+        }
+
+        await Logs.ClearAsync();
+        await Logs.InfoAsync("应用", "用户已清空诊断日志。");
+        await RefreshLogsAsync();
+        isError = false;
+        message = "诊断日志已清空。";
     }
 }
