@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Maui.Storage;
 using Zero72.Blog.Mobile.Models;
 using Zero72.Blog.Reading;
 using Zero72.Blog.Shared;
@@ -14,11 +15,16 @@ namespace Zero72.Blog.Mobile.Services;
 public sealed class BlogApiClient : IDisposable
 {
     private const int MaxImageBytes = 5 * 1024 * 1024;
+    private const string AdminCookieName = "__Zero72Admin";
+    private const string SecureSessionKey = "zero72_admin_auth_cookie_v1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly MobileSettingsService settings;
     private readonly SessionState session;
     private readonly AppLogService logs;
+    private readonly CookieContainer cookieContainer;
     private readonly HttpClient httpClient;
+    private readonly SemaphoreSlim sessionRestoreLock = new(1, 1);
+    private bool sessionRestoreAttempted;
 
     /// <summary>
     /// 创建启用 Cookie 的原生 HTTP 客户端。
@@ -31,9 +37,10 @@ public sealed class BlogApiClient : IDisposable
         this.settings = settings;
         this.session = session;
         this.logs = logs;
+        cookieContainer = new CookieContainer();
         var handler = new HttpClientHandler
         {
-            CookieContainer = new CookieContainer(),
+            CookieContainer = cookieContainer,
             UseCookies = true,
             AutomaticDecompression = DecompressionMethods.All
         };
@@ -48,10 +55,20 @@ public sealed class BlogApiClient : IDisposable
     /// </summary>
     public async Task<AdminAuthStatus> GetStatusAsync(CancellationToken cancellationToken = default)
     {
+        await RestoreSessionAsync(cancellationToken);
         using var response = await SendAsync(HttpMethod.Get, "api/admin/auth/me", cancellationToken);
         var status = await response.Content.ReadFromJsonAsync<AdminAuthStatus>(cancellationToken);
         status ??= new AdminAuthStatus(false, null);
         session.Update(status.IsAuthenticated, status.UserName);
+        if (status.IsAuthenticated)
+        {
+            await PersistSessionAsync();
+        }
+        else
+        {
+            await ClearPersistedSessionAsync();
+        }
+
         return status;
     }
 
@@ -72,12 +89,22 @@ public sealed class BlogApiClient : IDisposable
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.TooManyRequests)
         {
             session.Update(false, null);
+            await ClearPersistedSessionAsync();
             return false;
         }
 
         await EnsureSuccessAsync(response, cancellationToken);
         var status = await response.Content.ReadFromJsonAsync<AdminAuthStatus>(cancellationToken);
         session.Update(status?.IsAuthenticated == true, status?.UserName);
+        if (status?.IsAuthenticated == true)
+        {
+            await PersistSessionAsync();
+        }
+        else
+        {
+            await ClearPersistedSessionAsync();
+        }
+
         return status?.IsAuthenticated == true;
     }
 
@@ -86,13 +113,19 @@ public sealed class BlogApiClient : IDisposable
     /// </summary>
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
-        using var response = await SendAsync(HttpMethod.Post, "api/admin/auth/logout", cancellationToken);
-        if (response.StatusCode != HttpStatusCode.Unauthorized)
+        try
         {
-            await EnsureSuccessAsync(response, cancellationToken);
+            using var response = await SendAsync(HttpMethod.Post, "api/admin/auth/logout", cancellationToken);
+            if (response.StatusCode != HttpStatusCode.Unauthorized)
+            {
+                await EnsureSuccessAsync(response, cancellationToken);
+            }
         }
-
-        session.Update(false, null);
+        finally
+        {
+            session.Update(false, null);
+            await ClearPersistedSessionAsync();
+        }
     }
 
     /// <summary>
@@ -368,6 +401,7 @@ public sealed class BlogApiClient : IDisposable
     /// </summary>
     public void Dispose()
     {
+        sessionRestoreLock.Dispose();
         httpClient.Dispose();
     }
 
@@ -496,6 +530,7 @@ public sealed class BlogApiClient : IDisposable
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
             session.Update(false, null);
+            await ClearPersistedSessionAsync();
             throw new BlogApiException("登录已失效，请重新登录。");
         }
 
@@ -561,4 +596,117 @@ public sealed class BlogApiClient : IDisposable
             ? property.GetString()
             : null;
     }
+
+    /// <summary>
+    /// 首次请求前从 Android SecureStorage 恢复加密保存的管理员 Cookie。
+    /// 恢复后仍必须调用服务端认证状态接口验证，客户端缓存本身不代表已经登录。
+    /// </summary>
+    private async Task RestoreSessionAsync(CancellationToken cancellationToken)
+    {
+        await sessionRestoreLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (sessionRestoreAttempted)
+            {
+                return;
+            }
+
+            sessionRestoreAttempted = true;
+            var serialized = await SecureStorage.Default.GetAsync(SecureSessionKey);
+            if (string.IsNullOrWhiteSpace(serialized))
+            {
+                return;
+            }
+
+            var stored = JsonSerializer.Deserialize<PersistedAuthSession>(serialized, JsonOptions);
+            var baseUri = settings.GetBaseUri();
+            var currentOrigin = baseUri.GetLeftPart(UriPartial.Authority);
+            if (stored is null ||
+                !string.Equals(stored.Origin, currentOrigin, StringComparison.OrdinalIgnoreCase) ||
+                stored.ExpiresUtc <= DateTimeOffset.UtcNow ||
+                string.IsNullOrWhiteSpace(stored.CookieValue))
+            {
+                await ClearPersistedSessionAsync();
+                return;
+            }
+
+            var cookie = new Cookie(AdminCookieName, stored.CookieValue, "/", baseUri.Host)
+            {
+                Expires = stored.ExpiresUtc.UtcDateTime,
+                HttpOnly = true,
+                Secure = baseUri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            };
+            cookieContainer.Add(baseUri, cookie);
+            await logs.InfoAsync("认证", $"已从安全存储恢复登录 Cookie，有效期至 {stored.ExpiresUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}，正在向服务器验证。");
+        }
+        catch (Exception exception)
+        {
+            SecureStorage.Default.Remove(SecureSessionKey);
+            await logs.WarningAsync("认证", $"恢复登录 Cookie 失败，已忽略本地缓存：{exception.GetType().Name}：{exception.Message}");
+        }
+        finally
+        {
+            sessionRestoreLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 将服务端签发或滑动续期后的 Cookie 加密保存到 Android SecureStorage。
+    /// </summary>
+    private async Task PersistSessionAsync()
+    {
+        try
+        {
+            var baseUri = settings.GetBaseUri();
+            var cookie = cookieContainer
+                .GetCookies(baseUri)
+                .Cast<Cookie>()
+                .FirstOrDefault(item => item.Name.Equals(AdminCookieName, StringComparison.Ordinal));
+            if (cookie is null || cookie.Expired || string.IsNullOrWhiteSpace(cookie.Value))
+            {
+                await logs.WarningAsync("认证", "服务器认证成功，但没有找到可持久化的登录 Cookie。");
+                return;
+            }
+
+            var expiresUtc = cookie.Expires == DateTime.MinValue
+                ? DateTimeOffset.UtcNow.AddDays(7)
+                : new DateTimeOffset(cookie.Expires.ToUniversalTime());
+            var stored = new PersistedAuthSession(
+                baseUri.GetLeftPart(UriPartial.Authority),
+                cookie.Value,
+                expiresUtc);
+            await SecureStorage.Default.SetAsync(
+                SecureSessionKey,
+                JsonSerializer.Serialize(stored, JsonOptions));
+            await logs.InfoAsync("认证", $"登录 Cookie 已加密保存，有效期至 {expiresUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}。");
+        }
+        catch (Exception exception)
+        {
+            await logs.WarningAsync("认证", $"保存登录 Cookie 失败，本次运行仍可继续使用：{exception.GetType().Name}：{exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 删除安全存储和 CookieContainer 中的当前管理员会话。
+    /// </summary>
+    private Task ClearPersistedSessionAsync()
+    {
+        SecureStorage.Default.Remove(SecureSessionKey);
+        var baseUri = settings.GetBaseUri();
+        var expiredCookie = new Cookie(AdminCookieName, string.Empty, "/", baseUri.Host)
+        {
+            Expires = DateTime.UtcNow.AddYears(-1),
+            Expired = true
+        };
+        cookieContainer.Add(baseUri, expiredCookie);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 表示加密保存到设备安全存储中的最小管理员会话信息。
+    /// </summary>
+    private sealed record PersistedAuthSession(
+        string Origin,
+        string CookieValue,
+        DateTimeOffset ExpiresUtc);
 }

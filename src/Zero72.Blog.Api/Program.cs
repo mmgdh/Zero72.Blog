@@ -20,6 +20,10 @@ builder.Services
         options.Cookie.Name = "__Zero72Admin";
         options.Cookie.SameSite = SameSiteMode.Strict;
         options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.ExpireTimeSpan = AdminSessionValidator.GetSessionLifetime(builder.Configuration);
+        options.SlidingExpiration = true;
+        options.Events.OnValidatePrincipal = context =>
+            AdminSessionValidator.ValidateAsync(context, builder.Configuration);
         options.Events.OnRedirectToAccessDenied = context =>
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;

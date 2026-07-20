@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Zero72.Blog.Api.Security;
 using Zero72.Blog.Shared;
 
 namespace Zero72.Blog.Api.Endpoints;
@@ -43,7 +44,10 @@ public static class AdminAuthEndpoints
             var claims = new[]
             {
                 new Claim(ClaimTypes.Name, configuredUserName),
-                new Claim(ClaimTypes.Role, "Admin")
+                new Claim(ClaimTypes.Role, "Admin"),
+                new Claim(
+                    AdminSessionValidator.CredentialStampClaimType,
+                    AdminSessionValidator.CreateCredentialStamp(configuration)!)
             };
             var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
             var principal = new ClaimsPrincipal(identity);
@@ -54,7 +58,8 @@ public static class AdminAuthEndpoints
                 new AuthenticationProperties
                 {
                     AllowRefresh = true,
-                    ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8),
+                    ExpiresUtc = DateTimeOffset.UtcNow.Add(
+                        AdminSessionValidator.GetSessionLifetime(configuration)),
                     IsPersistent = true
                 });
 
